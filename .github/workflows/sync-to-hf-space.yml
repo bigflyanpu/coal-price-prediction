@@ -10,16 +10,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          fetch-depth: 0
+          python-version: "3.11"
 
-      - name: Configure git identity
+      - name: Install Hugging Face Hub SDK
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          python -m pip install --upgrade pip
+          pip install huggingface_hub
 
-      - name: Push to Hugging Face Space
+      - name: Upload repository to Hugging Face Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
@@ -28,6 +31,24 @@ jobs:
             exit 1
           fi
 
-          git remote add hf "https://bigflyanpu:${HF_TOKEN}@huggingface.co/spaces/bigflyanpu/coal_price_prediction"
-          git fetch hf main || true
-          git push hf HEAD:main
+          python - <<'PY'
+          import os
+          from huggingface_hub import HfApi
+
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          api.upload_folder(
+              repo_id="bigflyanpu/coal_price_prediction",
+              repo_type="space",
+              folder_path=".",
+              commit_message="Sync from GitHub Actions",
+              ignore_patterns=[
+                  ".git/*",
+                  ".venv/*",
+                  "__pycache__/*",
+                  "*.pyc",
+                  "data/*",
+                  "models/*",
+              ],
+          )
+          print("Upload to Hugging Face Space completed.")
+          PY
