@@ -11,6 +11,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Configure git identity
         run: |
@@ -27,4 +29,5 @@ jobs:
           fi
 
           git remote add hf "https://bigflyanpu:${HF_TOKEN}@huggingface.co/spaces/bigflyanpu/coal_price_prediction"
-          git push hf main --force
+          git fetch hf main || true
+          git push hf HEAD:main
