@@ -97,7 +97,19 @@ git commit -m "Deploy coal price prediction app"
 git push
 ```
 
-### 5.4 部署完成后访问
+### 5.4 如果本地无法连接 Hugging Face（推荐自动同步）
+
+如果你本机网络访问 `huggingface.co:443` 超时，可以使用项目内置的 GitHub Actions 自动同步：
+
+1. 打开 GitHub 仓库 `Settings` -> `Secrets and variables` -> `Actions`
+2. 新建 Secret：
+   - 名称：`HF_TOKEN`
+   - 值：你的 Hugging Face Access Token（`write` 权限）
+3. 推送代码到 GitHub `main` 分支：
+   - 工作流 `Sync to Hugging Face Space` 会自动把代码推到 `bigflyanpu/coal_price_prediction`
+4. 在 GitHub `Actions` 页面查看执行状态，成功后 Space 会自动构建
+
+### 5.5 部署完成后访问
 
 访问你的固定地址：
 
