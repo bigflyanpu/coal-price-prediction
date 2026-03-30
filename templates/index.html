@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>煤炭价格多尺度预测系统</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background: #0f172a; color: #f8fafc; }
+    .container { max-width: 980px; margin: 40px auto; padding: 0 16px; }
+    .card { background: #1e293b; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+    h1 { margin-bottom: 8px; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .metric { background: #334155; border-radius: 10px; padding: 14px; }
+    .metric .k { color: #cbd5e1; font-size: 13px; }
+    .metric .v { font-size: 24px; margin-top: 6px; }
+    button { background: #22c55e; border: 0; color: #052e16; font-weight: 600; padding: 10px 14px; border-radius: 8px; cursor: pointer; }
+    input { width: 100%; box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #f8fafc; margin: 10px 0; }
+    .muted { color: #94a3b8; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>煤炭价格多尺度预测系统</h1>
+      <p class="muted">模型结构：日度 LSTM+Transformer / 月度 LightGBM / 年度 Robust-SVR / 长协价映射</p>
+    </div>
+
+    <div class="card">
+      <div class="grid" id="metrics">
+        <div class="metric"><div class="k">次日市场价预测</div><div class="v" id="d1">{{ prediction.next_day_market_price }}</div></div>
+        <div class="metric"><div class="k">次日长协价预测</div><div class="v" id="d2">{{ prediction.next_day_contract_price }}</div></div>
+        <div class="metric"><div class="k">次月市场价预测</div><div class="v" id="m1">{{ prediction.next_month_market_price }}</div></div>
+        <div class="metric"><div class="k">次年市场价预测</div><div class="v" id="y1">{{ prediction.next_year_market_price }}</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>使用你自己的 CSV 数据预测</h3>
+      <p class="muted">输入服务器可访问的 CSV 绝对路径，字段需包含：date、market_price、contract_price 及基础特征列。</p>
+      <input id="csv" placeholder="例如：/app/data/coal_prices.csv" />
+      <button onclick="runPredict()">运行预测</button>
+      <p class="muted" id="msg"></p>
+    </div>
+  </div>
+
+  <script>
+    async function runPredict() {
+      const csvPath = document.getElementById('csv').value.trim();
+      const msg = document.getElementById('msg');
+      msg.textContent = '计算中...';
+      try {
+        const res = await fetch('/api/predict', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ csv_path: csvPath || undefined })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '预测失败');
+
+        document.getElementById('d1').textContent = data.next_day_market_price;
+        document.getElementById('d2').textContent = data.next_day_contract_price;
+        document.getElementById('m1').textContent = data.next_month_market_price;
+        document.getElementById('y1').textContent = data.next_year_market_price;
+        msg.textContent = '预测成功';
+      } catch (e) {
+        msg.textContent = e.message;
+      }
+    }
+  </script>
+</body>
+</html>
