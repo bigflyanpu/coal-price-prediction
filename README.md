@@ -1,3 +1,12 @@
+---
+title: Coal Price Prediction
+emoji: "⛏️"
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+---
+
 # 煤炭价格多尺度预测系统（按 PDF 技术路线实现）
 
 本项目实现了一个可运行的端到端原型：
@@ -45,7 +54,58 @@ curl -X POST http://127.0.0.1:7860/api/predict   -H 'Content-Type: application/j
 curl -X POST http://127.0.0.1:7860/api/predict   -H 'Content-Type: application/json'   -d '{"csv_path":"/absolute/path/to/your.csv"}'
 ```
 
-## 5. 部署为长期稳定域名（Render）
+## 5. 部署到 Hugging Face Spaces（无需绑卡，推荐）
+
+本项目已支持 **Docker Space**，可直接部署为长期稳定公网地址：
+
+- 形如：`https://<你的space名>.hf.space`
+- 例如：`https://bigflyanpu-coal-price-prediction.hf.space`
+
+### 5.1 创建 Space
+
+1. 打开 [Hugging Face Spaces](https://huggingface.co/new-space)
+2. Owner 选你的账号
+3. Space name 建议填：`coal-price-prediction`
+4. SDK 选择：`Docker`
+5. Visibility 选 `Public`（大家都能访问）
+6. 点击 `Create Space`
+
+### 5.2 上传代码（网页操作）
+
+在新 Space 页面点 `Files` -> `Add file` -> `Upload files`，把项目文件上传（保持目录结构）：
+
+- `Dockerfile`
+- `app.py`
+- `requirements.txt`
+- `src/`
+- `templates/`
+- `train.py`
+- `README.md`
+
+上传后会自动触发构建和部署，首次构建通常几分钟到十几分钟。
+
+### 5.3 上传代码（Git 命令，可选）
+
+如果你想用命令行推送：
+
+```bash
+git clone https://huggingface.co/spaces/<你的用户名>/<你的space名>
+cd <你的space名>
+# 复制项目文件到当前目录后：
+git add .
+git commit -m "Deploy coal price prediction app"
+git push
+```
+
+### 5.4 部署完成后访问
+
+访问你的固定地址：
+
+- `https://<你的space名>.hf.space`
+
+---
+
+## 6. Render 方案（需要绑卡）
 
 项目已包含 `render.yaml`，可直接一键部署并获得稳定地址（`*.onrender.com`）。
 
@@ -77,7 +137,7 @@ curl -X POST http://127.0.0.1:7860/api/predict   -H 'Content-Type: application/j
 - 推送代码到 GitHub 主分支后，Render 会自动重新部署。
 - 地址保持不变，访问链接长期可用。
 
-## 6. 数据格式要求（最小字段）
+## 7. 数据格式要求（最小字段）
 
 CSV 至少包含：
 
