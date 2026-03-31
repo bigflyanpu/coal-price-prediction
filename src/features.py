@@ -80,7 +80,12 @@ def build_feature_library(df: pd.DataFrame, cfg: FeatureConfig = FeatureConfig()
             out[f"{a}_div_{b}"] = out[a] / (out[b].abs() + 1e-6)
             out[f"{a}_plus_{b}"] = out[a] + out[b]
 
-    return out.replace([np.inf, -np.inf], np.nan).dropna().reset_index(drop=True)
+    out = out.replace([np.inf, -np.inf], np.nan)
+    burn_in = max(cfg.lags) if cfg.lags else 0
+    if burn_in > 0 and len(out) > burn_in:
+        out = out.iloc[burn_in:].copy()
+    out = out.ffill().bfill().fillna(0.0)
+    return out.reset_index(drop=True)
 
 
 def select_core_features_xgboost(
@@ -91,6 +96,8 @@ def select_core_features_xgboost(
     candidates = [c for c in feature_df.columns if c not in {"date", target_col, "contract_price"}]
     x = feature_df[candidates]
     y = feature_df[target_col]
+    if x.empty or len(x) == 0:
+        raise ValueError("feature_df 为空，无法进行特征筛选。请检查数据预处理是否产生全空样本。")
 
     try:
         from xgboost import XGBRegressor

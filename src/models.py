@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, Tuple
 
 import numpy as np
 import pandas as pd
@@ -39,17 +39,33 @@ class DailyTrainerConfig:
     batch_size: int = 64
 
 
+@dataclass
+class DailyBundle:
+    model: LSTMTransformerRegressor
+    x_scaler: RobustScaler
+    y_scaler: RobustScaler
+
+
 def _to_sequence(x: np.ndarray) -> np.ndarray:
     return x[:, None, :]
 
 
-def train_daily_model(train_x: np.ndarray, train_y: np.ndarray, cfg: DailyTrainerConfig = DailyTrainerConfig()) -> LSTMTransformerRegressor:
+def train_daily_model(
+    train_x: np.ndarray,
+    train_y: np.ndarray,
+    cfg: DailyTrainerConfig = DailyTrainerConfig(),
+) -> DailyBundle:
+    x_scaler = RobustScaler()
+    y_scaler = RobustScaler()
+    train_x_scaled = x_scaler.fit_transform(train_x)
+    train_y_scaled = y_scaler.fit_transform(train_y.reshape(-1, 1)).reshape(-1)
+
     model = LSTMTransformerRegressor(input_size=train_x.shape[1])
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr)
     loss_fn = nn.HuberLoss()
 
-    x_t = torch.tensor(_to_sequence(train_x), dtype=torch.float32)
-    y_t = torch.tensor(train_y.reshape(-1, 1), dtype=torch.float32)
+    x_t = torch.tensor(_to_sequence(train_x_scaled), dtype=torch.float32)
+    y_t = torch.tensor(train_y_scaled.reshape(-1, 1), dtype=torch.float32)
 
     model.train()
     n = len(x_t)
@@ -62,13 +78,20 @@ def train_daily_model(train_x: np.ndarray, train_y: np.ndarray, cfg: DailyTraine
             opt.zero_grad()
             loss.backward()
             opt.step()
-    return model
+    return DailyBundle(model=model, x_scaler=x_scaler, y_scaler=y_scaler)
 
 
-def predict_daily_model(model: LSTMTransformerRegressor, x: np.ndarray) -> np.ndarray:
-    model.eval()
+def predict_daily_model(bundle: DailyBundle, x: np.ndarray) -> np.ndarray:
+    x_scaled = bundle.x_scaler.transform(x)
+    bundle.model.eval()
     with torch.no_grad():
-        pred = model(torch.tensor(_to_sequence(x), dtype=torch.float32)).cpu().numpy().reshape(-1)
+        pred_scaled = (
+            bundle.model(torch.tensor(_to_sequence(x_scaled), dtype=torch.float32))
+            .cpu()
+            .numpy()
+            .reshape(-1, 1)
+        )
+    pred = bundle.y_scaler.inverse_transform(pred_scaled).reshape(-1)
     return pred
 
 
@@ -87,6 +110,51 @@ def train_monthly_model(train_x: pd.DataFrame, train_y: pd.Series) -> LGBMRegres
     return model
 
 
+def train_best_monthly_model(train_x: pd.DataFrame, train_y: pd.Series) -> Tuple[LGBMRegressor, dict, float]:
+    split = max(12, int(len(train_x) * 0.8))
+    if split >= len(train_x):
+        split = max(1, len(train_x) - 1)
+    x_tr, x_val = train_x.iloc[:split], train_x.iloc[split:]
+    y_tr, y_val = train_y.iloc[:split], train_y.iloc[split:]
+
+    candidates = [
+        {"n_estimators": 300, "learning_rate": 0.04, "max_depth": 4, "num_leaves": 31},
+        {"n_estimators": 450, "learning_rate": 0.03, "max_depth": 5, "num_leaves": 48},
+        {"n_estimators": 600, "learning_rate": 0.02, "max_depth": 6, "num_leaves": 63},
+    ]
+
+    best_params = candidates[0]
+    best_score = float("inf")
+    for params in candidates:
+        model = LGBMRegressor(
+            random_state=42,
+            subsample=0.85,
+            colsample_bytree=0.85,
+            verbose=-1,
+            **params,
+        )
+        model.fit(x_tr, y_tr)
+        if len(x_val) > 0:
+            pred = model.predict(x_val)
+            score = float(mean_absolute_percentage_error(y_val, pred))
+        else:
+            pred = model.predict(x_tr)
+            score = float(mean_absolute_percentage_error(y_tr, pred))
+        if score < best_score:
+            best_score = score
+            best_params = params
+
+    best_model = LGBMRegressor(
+        random_state=42,
+        subsample=0.85,
+        colsample_bytree=0.85,
+        verbose=-1,
+        **best_params,
+    )
+    best_model.fit(train_x, train_y)
+    return best_model, best_params, best_score
+
+
 @dataclass
 class YearlyBundle:
     scaler: RobustScaler
@@ -99,6 +167,43 @@ def train_yearly_model(train_x: pd.DataFrame, train_y: pd.Series) -> YearlyBundl
     model = SVR(C=12.0, epsilon=0.05, kernel="rbf", gamma="scale")
     model.fit(x_scaled, train_y)
     return YearlyBundle(scaler=scaler, model=model)
+
+
+def train_best_yearly_model(train_x: pd.DataFrame, train_y: pd.Series) -> Tuple[YearlyBundle, dict, float]:
+    split = max(3, int(len(train_x) * 0.8))
+    if split >= len(train_x):
+        split = max(1, len(train_x) - 1)
+    x_tr, x_val = train_x.iloc[:split], train_x.iloc[split:]
+    y_tr, y_val = train_y.iloc[:split], train_y.iloc[split:]
+
+    candidates = [
+        {"C": 8.0, "epsilon": 0.07, "kernel": "rbf"},
+        {"C": 12.0, "epsilon": 0.05, "kernel": "rbf"},
+        {"C": 20.0, "epsilon": 0.04, "kernel": "rbf"},
+    ]
+
+    best_params = candidates[0]
+    best_score = float("inf")
+    for params in candidates:
+        scaler = RobustScaler()
+        x_tr_scaled = scaler.fit_transform(x_tr)
+        model = SVR(gamma="scale", **params)
+        model.fit(x_tr_scaled, y_tr)
+        if len(x_val) > 0:
+            pred = model.predict(scaler.transform(x_val))
+            score = float(mean_absolute_percentage_error(y_val, pred))
+        else:
+            pred = model.predict(x_tr_scaled)
+            score = float(mean_absolute_percentage_error(y_tr, pred))
+        if score < best_score:
+            best_score = score
+            best_params = params
+
+    final_scaler = RobustScaler()
+    x_full_scaled = final_scaler.fit_transform(train_x)
+    final_model = SVR(gamma="scale", **best_params)
+    final_model.fit(x_full_scaled, train_y)
+    return YearlyBundle(scaler=final_scaler, model=final_model), best_params, best_score
 
 
 @dataclass

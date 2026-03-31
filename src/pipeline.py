@@ -22,8 +22,8 @@ from .models import (
     evaluate_metrics,
     predict_daily_model,
     train_daily_model,
-    train_monthly_model,
-    train_yearly_model,
+    train_best_monthly_model,
+    train_best_yearly_model,
 )
 from .nlp_index import NLPConfig, PolicySentimentIndexer
 
@@ -123,6 +123,48 @@ class CoalResearchPipeline:
         split_idx = int(len(df) * ratio)
         return df.iloc[:split_idx].copy(), df.iloc[split_idx:].copy()
 
+    def _build_monthly_enhanced(self, daily_df: pd.DataFrame, daily_pred_frame: pd.DataFrame) -> pd.DataFrame:
+        monthly = aggregate_monthly(daily_df)
+        pred_month = (
+            daily_pred_frame.set_index("date")["daily_pred"]
+            .resample("MS")
+            .agg(["mean", "std", "min", "max"])
+            .rename(
+                columns={
+                    "mean": "daily_pred_mean",
+                    "std": "daily_pred_std",
+                    "min": "daily_pred_min",
+                    "max": "daily_pred_max",
+                }
+            )
+            .reset_index()
+        )
+        monthly = monthly.merge(pred_month, on="date", how="left")
+        monthly = monthly.sort_values("date").ffill().bfill()
+        return monthly
+
+    def _build_yearly_enhanced(self, daily_df: pd.DataFrame, monthly_df: pd.DataFrame, monthly_pred: np.ndarray) -> pd.DataFrame:
+        yearly = aggregate_yearly(daily_df)
+        monthly_tmp = monthly_df[["date"]].copy()
+        monthly_tmp["monthly_pred"] = monthly_pred
+        pred_year = (
+            monthly_tmp.set_index("date")["monthly_pred"]
+            .resample("YS")
+            .agg(["mean", "std", "min", "max"])
+            .rename(
+                columns={
+                    "mean": "monthly_pred_mean",
+                    "std": "monthly_pred_std",
+                    "min": "monthly_pred_min",
+                    "max": "monthly_pred_max",
+                }
+            )
+            .reset_index()
+        )
+        yearly = yearly.merge(pred_year, on="date", how="left")
+        yearly = yearly.sort_values("date").ffill().bfill()
+        return yearly
+
     def train(self) -> TrainOutput:
         warnings.filterwarnings("ignore", category=pd.errors.PerformanceWarning)
         self._log(f"train start (fast_mode={self.train_cfg.fast_mode}, refresh_cache={self.train_cfg.refresh_cache})")
@@ -156,35 +198,39 @@ class CoalResearchPipeline:
         x_test = test_df[x_cols]
         y_test = test_df["market_price"]
 
-        daily_model = train_daily_model(x_train.to_numpy(), y_train.to_numpy(), DailyTrainerConfig())
-        daily_pred_test = predict_daily_model(daily_model, x_test.to_numpy())
+        daily_bundle = train_daily_model(x_train.to_numpy(), y_train.to_numpy(), DailyTrainerConfig())
+        daily_pred_test = predict_daily_model(daily_bundle, x_test.to_numpy())
         daily_metrics = evaluate_metrics(y_test.to_numpy(), daily_pred_test)
 
         policy_for_rule = test_df.get("policy_strength", pd.Series(np.zeros(len(test_df))))
-        mapper = ContractPriceMapper().fit(daily_pred_test, test_df["contract_price"].to_numpy())
+        daily_pred_train = predict_daily_model(daily_bundle, x_train.to_numpy())
+        mapper = ContractPriceMapper().fit(daily_pred_train, train_df["contract_price"].to_numpy())
         contract_pred = mapper.predict(daily_pred_test, policy_for_rule.to_numpy())
         contract_metrics = evaluate_metrics(test_df["contract_price"].to_numpy(), contract_pred)
 
         full_daily_for_agg = daily_df.copy()
-        monthly = aggregate_monthly(full_daily_for_agg)
+        daily_pred_full = predict_daily_model(daily_bundle, selected_df[x_cols].to_numpy())
+        daily_pred_frame = pd.DataFrame({"date": selected_df["date"].to_numpy(), "daily_pred": daily_pred_full})
+        monthly = self._build_monthly_enhanced(full_daily_for_agg, daily_pred_frame)
         month_drop = ["date", "market_price", "contract_price"]
         x_month = monthly.drop(columns=month_drop)
         y_month = monthly["market_price"]
         split_m = max(12, int(len(monthly) * 0.8))
         x_m_train, x_m_test = x_month.iloc[:split_m], x_month.iloc[split_m:]
         y_m_train, y_m_test = y_month.iloc[:split_m], y_month.iloc[split_m:]
-        monthly_model = train_monthly_model(x_m_train, y_m_train)
+        monthly_model, monthly_params, monthly_val_mape = train_best_monthly_model(x_m_train, y_m_train)
         month_pred = monthly_model.predict(x_m_test)
         monthly_metrics = evaluate_metrics(y_m_test.to_numpy(), month_pred)
 
-        yearly = aggregate_yearly(full_daily_for_agg)
+        month_pred_full = monthly_model.predict(x_month)
+        yearly = self._build_yearly_enhanced(full_daily_for_agg, monthly, month_pred_full)
         year_drop = ["date", "market_price", "contract_price"]
         x_year = yearly.drop(columns=year_drop)
         y_year = yearly["market_price"]
         split_y = max(3, int(len(yearly) * 0.8))
         x_y_train, x_y_test = x_year.iloc[:split_y], x_year.iloc[split_y:]
         y_y_train, y_y_test = y_year.iloc[:split_y], y_year.iloc[split_y:]
-        yearly_bundle = train_yearly_model(x_y_train, y_y_train)
+        yearly_bundle, yearly_params, yearly_val_mape = train_best_yearly_model(x_y_train, y_y_train)
         year_pred = yearly_bundle.model.predict(yearly_bundle.scaler.transform(x_y_test))
         yearly_metrics = evaluate_metrics(y_y_test.to_numpy(), year_pred)
 
@@ -198,8 +244,15 @@ class CoalResearchPipeline:
             json.dumps(backtest.summary_metrics, ensure_ascii=False, indent=2), encoding="utf-8"
         )
 
-        torch.save(daily_model.state_dict(), self.model_dir / "daily_model.pt")
-        joblib.dump({"columns": x_cols}, self.model_dir / "daily_meta.joblib")
+        torch.save(daily_bundle.model.state_dict(), self.model_dir / "daily_model.pt")
+        joblib.dump(
+            {
+                "columns": x_cols,
+                "x_scaler": daily_bundle.x_scaler,
+                "y_scaler": daily_bundle.y_scaler,
+            },
+            self.model_dir / "daily_meta.joblib",
+        )
         joblib.dump(monthly_model, self.model_dir / "monthly_model.joblib")
         joblib.dump({"columns": list(x_month.columns)}, self.model_dir / "monthly_meta.joblib")
         joblib.dump(yearly_bundle, self.model_dir / "yearly_bundle.joblib")
@@ -218,10 +271,16 @@ class CoalResearchPipeline:
             "selected_feature_sample": x_cols[:20],
             "model_versions": {
                 "daily": "LSTMTransformer_v2",
-                "monthly": "LightGBM_v2",
-                "yearly": "RobustSVR_v2",
+                "monthly": "LightGBM_v3_tuned",
+                "yearly": "RobustSVR_v3_tuned",
                 "dual_track": "RuleMapper_v2",
                 "policy_index": "BERT_LDA_12d",
+            },
+            "tuning": {
+                "monthly_params": monthly_params,
+                "monthly_val_mape": monthly_val_mape,
+                "yearly_params": yearly_params,
+                "yearly_val_mape": yearly_val_mape,
             },
         }
         Path("reports/metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -3,275 +3,284 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>煤炭双轨定价多尺度预测系统</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>煤炭预测答辩仪表盘</title>
   <style>
-    body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f8fafc; }
-    .glass-card {
-      background: rgba(30, 41, 59, 0.7);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    :root {
+      --bg: #070d1d;
+      --panel: #111a32;
+      --panel2: #162240;
+      --line: #2b3e70;
+      --text: #edf3ff;
+      --muted: #9fb1d8;
+      --blue: #4f8cff;
+      --cyan: #22d3ee;
+      --green: #22c55e;
+      --purple: #8b5cf6;
+      --amber: #f59e0b;
     }
-    .gradient-text {
-      background: linear-gradient(to right, #60a5fa, #a78bfa);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+    *{box-sizing:border-box}
+    body{margin:0;color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;background:
+      radial-gradient(circle at 10% -20%, rgba(79,140,255,.25), transparent 35%),
+      radial-gradient(circle at 90% -10%, rgba(34,211,238,.18), transparent 30%),
+      var(--bg);
     }
-    .metric-value { font-variant-numeric: tabular-nums; }
-    
-    /* Custom scrollbar for pre blocks */
-    pre::-webkit-scrollbar { height: 8px; width: 8px; }
-    pre::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); border-radius: 4px; }
-    pre::-webkit-scrollbar-thumb { background: rgba(71, 85, 105, 0.8); border-radius: 4px; }
-    pre::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 1); }
+    .wrap{width:min(1280px,94vw);margin:20px auto 36px;}
+    .hero{padding:22px 24px;border:1px solid var(--line);border-radius:18px;background:linear-gradient(145deg,rgba(18,28,53,.95),rgba(22,35,64,.92));box-shadow:0 12px 28px rgba(0,0,0,.35)}
+    .hero h1{margin:0;font-size:clamp(28px,4vw,42px);font-weight:800;background:linear-gradient(90deg,#fff,#9fb9ff 55%,#7ce9ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+    .hero p{margin:8px 0 0;color:var(--muted);font-size:14px}
+    .badge{display:inline-flex;align-items:center;gap:8px;margin-top:12px;padding:6px 12px;border-radius:999px;border:1px solid rgba(34,197,94,.35);background:rgba(34,197,94,.14);font-size:12px;color:#95f2b8;font-weight:700}
+    .dot{width:8px;height:8px;border-radius:50%;background:#3ef27b;box-shadow:0 0 12px #3ef27b;animation:pulse 1.4s ease infinite}
+    @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.8)}}
+
+    .grid{margin-top:14px;display:grid;grid-template-columns:2fr 1fr;gap:14px}
+    .stack{display:grid;gap:14px}
+    .card{border:1px solid var(--line);border-radius:14px;background:linear-gradient(165deg,rgba(16,25,46,.92),rgba(13,21,40,.95));overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.28)}
+    .head{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid rgba(46,66,112,.55);background:rgba(13,22,43,.65)}
+    .head h2{margin:0;font-size:15px}
+    .tag{font-size:11px;color:#9ec2ff;border:1px solid rgba(79,140,255,.35);padding:3px 8px;border-radius:999px;background:rgba(79,140,255,.14)}
+    .body{padding:12px 14px}
+
+    .kpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+    .k{border:1px solid rgba(76,98,150,.65);border-radius:11px;padding:10px;background:linear-gradient(180deg,rgba(22,35,64,.92),rgba(17,28,52,.94))}
+    .k p{margin:0}
+    .k .n{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums}
+    .k .l{color:#b8c8eb;font-size:12px;margin-bottom:5px}
+    .k .u{color:#8ea2cf;font-size:11px}
+
+    .cols2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .panel{border:1px solid rgba(51,73,121,.65);border-radius:10px;padding:10px;background:#0d172d}
+    .panel h3{margin:0 0 8px;font-size:13px;color:#c9d7f6}
+
+    .chart{height:170px;background:#0a1326;border:1px solid #253964;border-radius:10px;position:relative;padding:8px}
+    .chart svg{width:100%;height:100%}
+    .legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:11px;color:#93a8d8}
+    .lg{display:inline-flex;align-items:center;gap:5px}
+    .sw{width:10px;height:10px;border-radius:2px}
+
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px 6px;border-bottom:1px solid rgba(54,74,120,.55);font-size:12px;text-align:left}
+    th{color:#9fb3de}
+    td{color:#dbe6ff}
+
+    pre{margin:0;background:#0a1326;border:1px solid #253964;border-radius:10px;padding:10px;color:#c9d7f6;font-size:12px;max-height:210px;overflow:auto}
+
+    input{width:100%;border-radius:10px;border:1px solid #2b4374;background:#0a1326;color:#f2f6ff;padding:10px 11px;font-size:13px;outline:none}
+    input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(79,140,255,.2)}
+    button{width:100%;margin-top:8px;border:0;border-radius:10px;padding:10px 11px;background:linear-gradient(120deg,#2c76ff,#1db9ff);font-weight:700;color:#fff;cursor:pointer}
+    .msg{display:none;margin-top:8px;padding:8px;border-radius:8px;font-size:12px}
+    .ok{display:block;background:rgba(34,197,94,.16);border:1px solid rgba(34,197,94,.35);color:#93f5ba}
+    .err{display:block;background:rgba(251,113,133,.16);border:1px solid rgba(251,113,133,.35);color:#ffc7d1}
+
+    .pill-ok{padding:2px 8px;border-radius:999px;font-size:11px;background:rgba(34,197,94,.16);border:1px solid rgba(34,197,94,.35);color:#92f8b8}
+    .pill-warn{padding:2px 8px;border-radius:999px;font-size:11px;background:rgba(251,113,133,.16);border:1px solid rgba(251,113,133,.35);color:#ffc3ce}
+
+    .footer{text-align:center;margin-top:14px;color:#7f95c3;font-size:12px}
+
+    @media (max-width:1040px){.grid{grid-template-columns:1fr}.kpi{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media (max-width:640px){.kpi{grid-template-columns:1fr}.cols2{grid-template-columns:1fr}}
   </style>
 </head>
-<body class="min-h-screen p-4 md:p-8 selection:bg-blue-500/30">
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>煤炭价格预测答辩级仪表盘</h1>
+      <p>按 PDF 技术路线映射：数据层、NLP 指数层、特征层、模型层、验证层、系统层。页面即展示每一层落地结果。</p>
+      <div class="badge"><span class="dot"></span>系统在线 · 最新模型已加载</div>
+    </section>
 
-  <div class="max-w-6xl mx-auto space-y-6">
-    
-    <!-- Header -->
-    <header class="glass-card rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-      <div>
-        <h1 class="text-3xl font-bold tracking-tight mb-2">
-          煤炭双轨定价<span class="gradient-text">多尺度预测系统</span>
-        </h1>
-        <p class="text-slate-400 text-sm md:text-base max-w-2xl leading-relaxed">
-          基于多源异构数据（结构化/政策/舆情/气象）与 NLP 指数构建，采用 LSTM-Transformer / LightGBM / Robust-SVR 融合模型，实现日度、月度、年度及长协价精准预测。
-        </p>
-      </div>
-      <div class="flex items-center gap-3 bg-slate-800/50 px-4 py-2 rounded-lg border border-slate-700">
-        <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
-        <span class="text-sm font-medium text-slate-300">系统运行中</span>
-      </div>
-    </header>
-
-    <!-- Main Grid -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      
-      <!-- Left Column: Predictions -->
-      <div class="lg:col-span-2 space-y-6">
-        
-        <!-- Real-time Predictions -->
-        <section class="glass-card rounded-2xl p-6">
-          <div class="flex items-center justify-between mb-6">
-            <h2 class="text-xl font-semibold flex items-center gap-2">
-              <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
-              最新预测结果
-            </h2>
-            <span class="text-xs font-medium px-2.5 py-1 bg-blue-500/10 text-blue-400 rounded-full border border-blue-500/20">
-              基于最新数据
-            </span>
-          </div>
-          
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <!-- Daily Market -->
-            <div class="bg-slate-800/40 rounded-xl p-4 border border-slate-700/50 hover:border-blue-500/30 transition-colors">
-              <p class="text-slate-400 text-xs font-medium mb-1 uppercase tracking-wider">次日市场价</p>
-              <div class="flex items-baseline gap-1">
-                <span class="text-2xl font-bold text-white metric-value" id="d1">{{ prediction.next_day_market_price }}</span>
-                <span class="text-slate-500 text-sm">元/吨</span>
-              </div>
-            </div>
-            
-            <!-- Daily Contract -->
-            <div class="bg-slate-800/40 rounded-xl p-4 border border-slate-700/50 hover:border-purple-500/30 transition-colors relative overflow-hidden">
-              <div class="absolute top-0 right-0 w-16 h-16 bg-purple-500/5 rounded-bl-full"></div>
-              <p class="text-slate-400 text-xs font-medium mb-1 uppercase tracking-wider">次日长协价</p>
-              <div class="flex items-baseline gap-1">
-                <span class="text-2xl font-bold text-white metric-value" id="d2">{{ prediction.next_day_contract_price }}</span>
-                <span class="text-slate-500 text-sm">元/吨</span>
-              </div>
-            </div>
-            
-            <!-- Monthly Market -->
-            <div class="bg-slate-800/40 rounded-xl p-4 border border-slate-700/50 hover:border-emerald-500/30 transition-colors">
-              <p class="text-slate-400 text-xs font-medium mb-1 uppercase tracking-wider">次月市场价</p>
-              <div class="flex items-baseline gap-1">
-                <span class="text-2xl font-bold text-white metric-value" id="m1">{{ prediction.next_month_market_price }}</span>
-                <span class="text-slate-500 text-sm">元/吨</span>
-              </div>
-            </div>
-            
-            <!-- Yearly Market -->
-            <div class="bg-slate-800/40 rounded-xl p-4 border border-slate-700/50 hover:border-amber-500/30 transition-colors">
-              <p class="text-slate-400 text-xs font-medium mb-1 uppercase tracking-wider">次年市场价</p>
-              <div class="flex items-baseline gap-1">
-                <span class="text-2xl font-bold text-white metric-value" id="y1">{{ prediction.next_year_market_price }}</span>
-                <span class="text-slate-500 text-sm">元/吨</span>
-              </div>
+    <div class="grid">
+      <div class="stack">
+        <section class="card">
+          <div class="head"><h2>模型层：多尺度预测输出</h2><span class="tag">Daily / Monthly / Yearly</span></div>
+          <div class="body">
+            <div class="kpi">
+              <div class="k"><p class="l">次日市场价</p><p class="n" id="d1">{{ prediction.next_day_market_price }}</p><p class="u">元/吨</p></div>
+              <div class="k"><p class="l">次日长协价</p><p class="n" id="d2">{{ prediction.next_day_contract_price }}</p><p class="u">元/吨</p></div>
+              <div class="k"><p class="l">次月市场价</p><p class="n" id="m1">{{ prediction.next_month_market_price }}</p><p class="u">元/吨</p></div>
+              <div class="k"><p class="l">次年市场价</p><p class="n" id="y1">{{ prediction.next_year_market_price }}</p><p class="u">元/吨</p></div>
             </div>
           </div>
         </section>
 
-        <!-- Backtest Summary -->
-        <section class="glass-card rounded-2xl p-6">
-          <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
-            <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
-            滚动回测性能 (2018-2024 样本外)
-          </h2>
-          <div class="bg-[#0f172a] rounded-xl border border-slate-700/50 p-4 overflow-x-auto">
-            <pre id="backtest" class="text-sm text-slate-300 font-mono leading-relaxed">{{ backtest_summary | tojson(indent=2) }}</pre>
+        <section class="card">
+          <div class="head"><h2>NLP 层：政策冲击与舆情趋势</h2><span class="tag">Policy + Sentiment</span></div>
+          <div class="body cols2">
+            <div class="panel">
+              <h3>政策强度（近90天）</h3>
+              <div class="chart"><svg id="policyChart" viewBox="0 0 1000 260" preserveAspectRatio="none"></svg></div>
+            </div>
+            <div class="panel">
+              <h3>舆情情绪（近90天）</h3>
+              <div class="chart"><svg id="sentChart" viewBox="0 0 1000 260" preserveAspectRatio="none"></svg></div>
+            </div>
           </div>
         </section>
-        
-        <!-- Data Quality -->
-        <section class="glass-card rounded-2xl p-6">
-          <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
-            <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-            数据质量监控
-          </h2>
-          <div class="overflow-x-auto rounded-xl border border-slate-700/50">
-            <table class="w-full text-sm text-left">
-              <thead class="text-xs text-slate-400 uppercase bg-slate-800/50">
-                <tr>
-                  <th class="px-4 py-3 font-medium">数据源</th>
-                  <th class="px-4 py-3 font-medium">状态</th>
-                  <th class="px-4 py-3 font-medium">缺失字段</th>
-                  <th class="px-4 py-3 font-medium text-right">重复行</th>
-                  <th class="px-4 py-3 font-medium text-right">平均空值率</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-700/50 bg-[#0f172a]/50">
+
+        <section class="card">
+          <div class="head"><h2>验证层：滚动回测摘要</h2><span class="tag">2018-2024 OOS</span></div>
+          <div class="body cols2">
+            <div class="panel">
+              <h3>分尺度 MAPE（%）</h3>
+              <div class="chart"><svg id="mapeBar" viewBox="0 0 1000 260" preserveAspectRatio="none"></svg></div>
+              <div class="legend">
+                <span class="lg"><span class="sw" style="background:#4f8cff"></span>日度市场</span>
+                <span class="lg"><span class="sw" style="background:#8b5cf6"></span>月度市场</span>
+                <span class="lg"><span class="sw" style="background:#22c55e"></span>年度市场</span>
+              </div>
+            </div>
+            <div class="panel">
+              <h3>回测与版本信息</h3>
+              <pre id="backtestRaw">{{ backtest_summary | tojson(indent=2) }}</pre>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="head"><h2>数据层：数据质量与覆盖</h2><span class="tag">Quality Monitor</span></div>
+          <div class="body" style="overflow:auto;">
+            <table>
+              <thead><tr><th>数据源</th><th>状态</th><th>缺失字段</th><th>重复行</th><th>平均空值率</th></tr></thead>
+              <tbody>
                 {% for row in data_quality %}
-                <tr class="hover:bg-slate-800/30 transition-colors">
-                  <td class="px-4 py-3 font-medium text-slate-200">{{ row.source }}</td>
-                  <td class="px-4 py-3">
-                    {% if row.ok %}
-                      <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                        <div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> OK
-                      </span>
-                    {% else %}
-                      <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                        <div class="w-1.5 h-1.5 rounded-full bg-rose-500"></div> Warn
-                      </span>
-                    {% endif %}
-                  </td>
-                  <td class="px-4 py-3 text-slate-400">{{ row.missing_columns or '-' }}</td>
-                  <td class="px-4 py-3 text-right text-slate-300">{{ row.duplicate_rows }}</td>
-                  <td class="px-4 py-3 text-right text-slate-300">{{ "%.2f"|format(row.avg_null_rate * 100) }}%</td>
+                <tr>
+                  <td>{{ row.source }}</td>
+                  <td>{% if row.ok %}<span class="pill-ok">OK</span>{% else %}<span class="pill-warn">WARN</span>{% endif %}</td>
+                  <td>{{ row.missing_columns or '-' }}</td>
+                  <td>{{ row.duplicate_rows }}</td>
+                  <td>{{ "%.2f"|format(row.avg_null_rate * 100) }}%</td>
                 </tr>
                 {% endfor %}
               </tbody>
             </table>
           </div>
         </section>
-
       </div>
 
-      <!-- Right Column: Sidebar -->
-      <div class="space-y-6">
-        
-        <!-- Interactive Predictor -->
-        <section class="glass-card rounded-2xl p-6 border-t-4 border-t-blue-500">
-          <h2 class="text-lg font-semibold mb-2">自定义预测</h2>
-          <p class="text-sm text-slate-400 mb-4">输入服务器可访问的 CSV 路径，使用最新模型进行推理。</p>
-          
-          <div class="space-y-3">
-            <div>
-              <label for="csv" class="block text-xs font-medium text-slate-400 mb-1">数据文件路径</label>
-              <input 
-                id="csv" 
-                type="text" 
-                class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
-                placeholder="/app/data/curated/daily.csv" 
-              />
+      <div class="stack">
+        <section class="card">
+          <div class="head"><h2>系统层：在线预测</h2></div>
+          <div class="body">
+            <label style="display:block;color:#a4b7de;font-size:12px;margin-bottom:6px">CSV 绝对路径（服务器可访问）</label>
+            <input id="csv" placeholder="例如：/app/data/curated/daily.csv" />
+            <button id="predictBtn" onclick="runPredict()">运行预测</button>
+            <div id="msg" class="msg"></div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="head"><h2>特征层：高维因子概览</h2></div>
+          <div class="body">
+            <div class="kpi" style="grid-template-columns:1fr 1fr;">
+              <div class="k"><p class="l">因子总数</p><p class="n" style="font-size:26px">{{ metadata.features_total }}</p><p class="u">目标约 1800+</p></div>
+              <div class="k"><p class="l">核心入模</p><p class="n" style="font-size:26px">{{ metadata.features_selected }}</p><p class="u">XGBoost筛选</p></div>
             </div>
-            
-            <button 
-              onclick="runPredict()" 
-              id="predictBtn"
-              class="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
-            >
-              <span>运行推理</span>
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
-            </button>
-            
-            <div id="msgContainer" class="hidden rounded-lg p-3 text-sm border">
-              <p id="msg" class="font-medium"></p>
+            <div class="panel" style="margin-top:10px">
+              <h3>核心特征样本</h3>
+              <pre id="featureRaw">{{ metadata.selected_feature_sample | tojson(indent=2) }}</pre>
             </div>
           </div>
         </section>
 
-        <!-- Metadata -->
-        <section class="glass-card rounded-2xl p-6">
-          <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
-            <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
-            模型与特征版本
-          </h2>
-          <div class="bg-[#0f172a] rounded-xl border border-slate-700/50 p-4 overflow-x-auto">
-            <pre id="metadata" class="text-xs text-slate-300 font-mono leading-relaxed">{{ metadata | tojson(indent=2) }}</pre>
-          </div>
+        <section class="card">
+          <div class="head"><h2>模型版本</h2></div>
+          <div class="body"><pre id="versionRaw">{{ metadata.model_versions | tojson(indent=2) }}</pre></div>
         </section>
-        
       </div>
     </div>
-    
-    <!-- Footer -->
-    <footer class="text-center text-slate-500 text-sm py-6 border-t border-slate-800/50 mt-8">
-      <p>南京大学 · 计及双轨定价体系的多尺度大宗商品价格预测研究</p>
-    </footer>
-    
+
+    <div class="footer">南京大学 · 计及双轨定价体系的多尺度大宗商品价格预测研究</div>
   </div>
 
   <script>
-    async function runPredict() {
-      const csvPath = document.getElementById('csv').value.trim();
-      const msg = document.getElementById('msg');
-      const msgContainer = document.getElementById('msgContainer');
-      const btn = document.getElementById('predictBtn');
-      
-      // Loading state
-      btn.disabled = true;
-      btn.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> 计算中...';
-      
-      msgContainer.classList.remove('hidden', 'bg-rose-500/10', 'border-rose-500/20', 'text-rose-400', 'bg-emerald-500/10', 'border-emerald-500/20', 'text-emerald-400');
-      msgContainer.classList.add('hidden');
+    const DASHBOARD = {{ dashboard_data | tojson }};
 
-      try {
+    function setMsg(type, text){
+      const el = document.getElementById('msg');
+      el.className = 'msg ' + (type === 'ok' ? 'ok' : 'err');
+      el.textContent = text;
+    }
+
+    function drawLine(svgId, values, color){
+      const svg = document.getElementById(svgId);
+      if(!svg || !values || !values.length){ return; }
+      const w = 1000, h = 260, p = 18;
+      const min = Math.min(...values), max = Math.max(...values);
+      const span = Math.max(max - min, 1e-6);
+      const step = (w - p * 2) / Math.max(values.length - 1, 1);
+      let d = '';
+      values.forEach((v, i) => {
+        const x = p + i * step;
+        const y = h - p - ((v - min) / span) * (h - p * 2);
+        d += (i === 0 ? 'M' : 'L') + x.toFixed(2) + ' ' + y.toFixed(2) + ' ';
+      });
+      svg.innerHTML = `
+        <rect x="0" y="0" width="${w}" height="${h}" fill="none"></rect>
+        <path d="${d}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round"></path>
+      `;
+    }
+
+    function drawBars(svgId, bars){
+      const svg = document.getElementById(svgId);
+      if(!svg){ return; }
+      const w = 1000, h = 260, p = 30;
+      const max = Math.max(...bars.map(b => b.value), 1);
+      const col = (w - p * 2) / bars.length;
+      let content = '';
+      bars.forEach((b, i) => {
+        const bh = (b.value / max) * (h - p * 2);
+        const x = p + i * col + col * 0.16;
+        const y = h - p - bh;
+        const bw = col * 0.68;
+        content += `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="8" fill="${b.color}"></rect>`;
+        content += `<text x="${x + bw/2}" y="${h-8}" fill="#9fb1d8" font-size="16" text-anchor="middle">${b.label}</text>`;
+        content += `<text x="${x + bw/2}" y="${y-8}" fill="#edf3ff" font-size="16" text-anchor="middle">${b.value.toFixed(2)}</text>`;
+      });
+      svg.innerHTML = content;
+    }
+
+    function flash(id){
+      const e = document.getElementById(id);
+      e.style.color = '#7cb0ff';
+      setTimeout(() => { e.style.color = '#f5f8ff'; }, 360);
+    }
+
+    async function runPredict(){
+      const btn = document.getElementById('predictBtn');
+      const csvPath = document.getElementById('csv').value.trim();
+      btn.disabled = true;
+      btn.textContent = '计算中...';
+      try{
         const res = await fetch('/api/predict', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ csv_path: csvPath || undefined })
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ csv_path: csvPath || undefined }),
         });
         const data = await res.json();
-        
-        if (!res.ok) throw new Error(data.error || '预测失败');
-        
-        // Animate value changes
-        animateValue('d1', data.next_day_market_price);
-        animateValue('d2', data.next_day_contract_price);
-        animateValue('m1', data.next_month_market_price);
-        animateValue('y1', data.next_year_market_price);
-        
-        // Success state
-        msgContainer.classList.remove('hidden');
-        msgContainer.classList.add('bg-emerald-500/10', 'border-emerald-500/20', 'text-emerald-400');
-        msg.textContent = '推理完成，结果已更新';
-        
-      } catch (e) {
-        // Error state
-        msgContainer.classList.remove('hidden');
-        msgContainer.classList.add('bg-rose-500/10', 'border-rose-500/20', 'text-rose-400');
-        msg.textContent = e.message;
-      } finally {
-        // Reset button
+        if(!res.ok){ throw new Error(data.error || '预测失败'); }
+
+        document.getElementById('d1').textContent = data.next_day_market_price;
+        document.getElementById('d2').textContent = data.next_day_contract_price;
+        document.getElementById('m1').textContent = data.next_month_market_price;
+        document.getElementById('y1').textContent = data.next_year_market_price;
+        ['d1','d2','m1','y1'].forEach(flash);
+        setMsg('ok', '预测成功，结果已更新。');
+      }catch(err){
+        setMsg('err', err.message || '请求失败');
+      }finally{
         btn.disabled = false;
-        btn.innerHTML = '<span>运行推理</span><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>';
+        btn.textContent = '运行预测';
       }
     }
-    
-    // Simple number animation
-    function animateValue(id, end) {
-      const obj = document.getElementById(id);
-      obj.classList.add('text-blue-400');
-      setTimeout(() => {
-        obj.textContent = end;
-        setTimeout(() => obj.classList.remove('text-blue-400'), 300);
-      }, 150);
-    }
+
+    (function initDashboard(){
+      drawLine('policyChart', DASHBOARD.nlp_layer.policy_strength || [], '#22d3ee');
+      drawLine('sentChart', DASHBOARD.nlp_layer.sentiment_score || [], '#8b5cf6');
+      drawBars('mapeBar', [
+        { label: '日度', value: DASHBOARD.kpis.daily_mape || 0, color: '#4f8cff' },
+        { label: '月度', value: DASHBOARD.kpis.monthly_mape || 0, color: '#8b5cf6' },
+        { label: '年度', value: DASHBOARD.kpis.yearly_mape || 0, color: '#22c55e' },
+      ]);
+    })();
   </script>
 </body>
 </html>

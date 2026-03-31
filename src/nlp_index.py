@@ -5,8 +5,9 @@ from typing import Tuple
 
 import numpy as np
 import pandas as pd
-from sklearn.decomposition import LatentDirichletAllocation, PCA
+from sklearn.decomposition import LatentDirichletAllocation, TruncatedSVD
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+from sklearn.preprocessing import StandardScaler
 
 
 @dataclass
@@ -66,13 +67,43 @@ class PolicySentimentIndexer:
         bow = self.policy_count_vectorizer.fit_transform(docs)
         topic_dist = self.lda.fit_transform(bow)
         semantic = self._bert_embed(docs)
+        semantic = np.nan_to_num(semantic, nan=0.0, posinf=0.0, neginf=0.0)
+        semantic = np.clip(semantic, -1e3, 1e3)
 
-        merged = np.hstack([topic_dist, semantic])
-        comp = min(self.cfg.policy_dims, merged.shape[1], merged.shape[0])
-        if comp <= 0:
-            comp = 1
-        pca = PCA(n_components=comp, random_state=42)
-        reduced = pca.fit_transform(merged)
+        # In fast mode we avoid unstable heavy decomposition and expand topic-based indices directly.
+        if not self.cfg.use_bert:
+            topic_df = pd.DataFrame(topic_dist, columns=[f"policy_topic_{i+1}" for i in range(topic_dist.shape[1])])
+            topic_df["policy_doc_len"] = np.array([len(t) for t in docs], dtype=float)
+            topic_df["policy_unique_ratio"] = np.array(
+                [len(set(t.split())) / (len(t.split()) + 1e-6) for t in docs], dtype=float
+            )
+            topic_df["policy_keyword_boost"] = np.array(
+                [sum(k in t for k in ["保供", "稳价", "调控", "长协", "安全"]) for t in docs], dtype=float
+            )
+            merged = topic_df.to_numpy(dtype=float)
+            scaler = StandardScaler()
+            merged = scaler.fit_transform(merged)
+            comp = min(self.cfg.policy_dims, merged.shape[1])
+            reduced = merged[:, :comp]
+        else:
+            # For full mode use SVD with defensive fallbacks.
+            if semantic.ndim == 1:
+                semantic = semantic.reshape(-1, 1)
+            if semantic.shape[1] > 256:
+                semantic = semantic[:, :256]
+            merged = np.hstack([topic_dist, semantic])
+            merged = np.nan_to_num(merged, nan=0.0, posinf=0.0, neginf=0.0)
+            merged = np.clip(merged, -1e3, 1e3)
+            scaler = StandardScaler()
+            merged = scaler.fit_transform(merged)
+            comp = min(self.cfg.policy_dims, merged.shape[1], merged.shape[0] - 1)
+            if comp <= 0:
+                comp = 1
+            try:
+                svd = TruncatedSVD(n_components=comp, random_state=42)
+                reduced = svd.fit_transform(merged)
+            except Exception:
+                reduced = merged[:, :comp]
 
         # If comp < target dims, zero pad for stable schema.
         if comp < self.cfg.policy_dims:
