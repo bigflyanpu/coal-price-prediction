@@ -1,0 +1,103 @@
+{
+  "granularity": [
+    "daily",
+    "monthly",
+    "yearly"
+  ],
+  "primary_keys": {
+    "daily": [
+      "date"
+    ],
+    "monthly": [
+      "month"
+    ],
+    "yearly": [
+      "year"
+    ]
+  },
+  "sources": {
+    "structured": {
+      "required": [
+        "date",
+        "market_price",
+        "contract_price",
+        "port_inventory",
+        "rail_transport",
+        "power_consumption",
+        "import_volume",
+        "coal_output",
+        "industrial_value_added"
+      ],
+      "optional": [
+        "coking_coal_price",
+        "thermal_coal_price",
+        "electricity_spot_price"
+      ]
+    },
+    "policy_text": {
+      "required": [
+        "date",
+        "doc_id",
+        "title",
+        "body",
+        "source",
+        "url"
+      ],
+      "optional": [
+        "department",
+        "doc_type"
+      ]
+    },
+    "sentiment_text": {
+      "required": [
+        "date",
+        "news_id",
+        "title",
+        "body",
+        "media",
+        "url"
+      ],
+      "optional": [
+        "author",
+        "topic"
+      ]
+    },
+    "weather": {
+      "required": [
+        "date",
+        "region",
+        "temperature",
+        "precipitation",
+        "wind_speed"
+      ],
+      "optional": [
+        "humidity",
+        "pressure"
+      ]
+    }
+  },
+  "curated_daily_required": [
+    "date",
+    "market_price",
+    "contract_price",
+    "port_inventory",
+    "rail_transport",
+    "power_consumption",
+    "import_volume",
+    "coal_output",
+    "industrial_value_added",
+    "policy_strength",
+    "policy_uncertainty",
+    "sentiment_score",
+    "sentiment_heat",
+    "temperature",
+    "precipitation",
+    "wind_speed"
+  ],
+  "targets": {
+    "daily_market": "market_price",
+    "daily_contract": "contract_price",
+    "monthly_market": "market_price",
+    "yearly_market": "market_price"
+  }
+}

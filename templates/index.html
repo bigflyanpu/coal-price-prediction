@@ -3,51 +3,233 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>煤炭价格多尺度预测系统</title>
+  <title>煤炭双轨定价多尺度预测系统</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background: #0f172a; color: #f8fafc; }
-    .container { max-width: 980px; margin: 40px auto; padding: 0 16px; }
-    .card { background: #1e293b; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
-    h1 { margin-bottom: 8px; }
-    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-    .metric { background: #334155; border-radius: 10px; padding: 14px; }
-    .metric .k { color: #cbd5e1; font-size: 13px; }
-    .metric .v { font-size: 24px; margin-top: 6px; }
-    button { background: #22c55e; border: 0; color: #052e16; font-weight: 600; padding: 10px 14px; border-radius: 8px; cursor: pointer; }
-    input { width: 100%; box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #f8fafc; margin: 10px 0; }
-    .muted { color: #94a3b8; font-size: 13px; }
+    body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f8fafc; }
+    .glass-card {
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
+    .gradient-text {
+      background: linear-gradient(to right, #60a5fa, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .metric-value { font-variant-numeric: tabular-nums; }
+    
+    /* Custom scrollbar for pre blocks */
+    pre::-webkit-scrollbar { height: 8px; width: 8px; }
+    pre::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); border-radius: 4px; }
+    pre::-webkit-scrollbar-thumb { background: rgba(71, 85, 105, 0.8); border-radius: 4px; }
+    pre::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 1); }
   </style>
 </head>
-<body>
-  <div class="container">
-    <div class="card">
-      <h1>煤炭价格多尺度预测系统</h1>
-      <p class="muted">模型结构：日度 LSTM+Transformer / 月度 LightGBM / 年度 Robust-SVR / 长协价映射</p>
-    </div>
+<body class="min-h-screen p-4 md:p-8 selection:bg-blue-500/30">
 
-    <div class="card">
-      <div class="grid" id="metrics">
-        <div class="metric"><div class="k">次日市场价预测</div><div class="v" id="d1">{{ prediction.next_day_market_price }}</div></div>
-        <div class="metric"><div class="k">次日长协价预测</div><div class="v" id="d2">{{ prediction.next_day_contract_price }}</div></div>
-        <div class="metric"><div class="k">次月市场价预测</div><div class="v" id="m1">{{ prediction.next_month_market_price }}</div></div>
-        <div class="metric"><div class="k">次年市场价预测</div><div class="v" id="y1">{{ prediction.next_year_market_price }}</div></div>
+  <div class="max-w-6xl mx-auto space-y-6">
+    
+    <!-- Header -->
+    <header class="glass-card rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div>
+        <h1 class="text-3xl font-bold tracking-tight mb-2">
+          煤炭双轨定价<span class="gradient-text">多尺度预测系统</span>
+        </h1>
+        <p class="text-slate-400 text-sm md:text-base max-w-2xl leading-relaxed">
+          基于多源异构数据（结构化/政策/舆情/气象）与 NLP 指数构建，采用 LSTM-Transformer / LightGBM / Robust-SVR 融合模型，实现日度、月度、年度及长协价精准预测。
+        </p>
+      </div>
+      <div class="flex items-center gap-3 bg-slate-800/50 px-4 py-2 rounded-lg border border-slate-700">
+        <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+        <span class="text-sm font-medium text-slate-300">系统运行中</span>
+      </div>
+    </header>
+
+    <!-- Main Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      
+      <!-- Left Column: Predictions -->
+      <div class="lg:col-span-2 space-y-6">
+        
+        <!-- Real-time Predictions -->
+        <section class="glass-card rounded-2xl p-6">
+          <div class="flex items-center justify-between mb-6">
+            <h2 class="text-xl font-semibold flex items-center gap-2">
+              <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+              最新预测结果
+            </h2>
+            <span class="text-xs font-medium px-2.5 py-1 bg-blue-500/10 text-blue-400 rounded-full border border-blue-500/20">
+              基于最新数据
+            </span>
+          </div>
+          
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <!-- Daily Market -->
+            <div class="bg-slate-800/40 rounded-xl p-4 border border-slate-700/50 hover:border-blue-500/30 transition-colors">
+              <p class="text-slate-400 text-xs font-medium mb-1 uppercase tracking-wider">次日市场价</p>
+              <div class="flex items-baseline gap-1">
+                <span class="text-2xl font-bold text-white metric-value" id="d1">{{ prediction.next_day_market_price }}</span>
+                <span class="text-slate-500 text-sm">元/吨</span>
+              </div>
+            </div>
+            
+            <!-- Daily Contract -->
+            <div class="bg-slate-800/40 rounded-xl p-4 border border-slate-700/50 hover:border-purple-500/30 transition-colors relative overflow-hidden">
+              <div class="absolute top-0 right-0 w-16 h-16 bg-purple-500/5 rounded-bl-full"></div>
+              <p class="text-slate-400 text-xs font-medium mb-1 uppercase tracking-wider">次日长协价</p>
+              <div class="flex items-baseline gap-1">
+                <span class="text-2xl font-bold text-white metric-value" id="d2">{{ prediction.next_day_contract_price }}</span>
+                <span class="text-slate-500 text-sm">元/吨</span>
+              </div>
+            </div>
+            
+            <!-- Monthly Market -->
+            <div class="bg-slate-800/40 rounded-xl p-4 border border-slate-700/50 hover:border-emerald-500/30 transition-colors">
+              <p class="text-slate-400 text-xs font-medium mb-1 uppercase tracking-wider">次月市场价</p>
+              <div class="flex items-baseline gap-1">
+                <span class="text-2xl font-bold text-white metric-value" id="m1">{{ prediction.next_month_market_price }}</span>
+                <span class="text-slate-500 text-sm">元/吨</span>
+              </div>
+            </div>
+            
+            <!-- Yearly Market -->
+            <div class="bg-slate-800/40 rounded-xl p-4 border border-slate-700/50 hover:border-amber-500/30 transition-colors">
+              <p class="text-slate-400 text-xs font-medium mb-1 uppercase tracking-wider">次年市场价</p>
+              <div class="flex items-baseline gap-1">
+                <span class="text-2xl font-bold text-white metric-value" id="y1">{{ prediction.next_year_market_price }}</span>
+                <span class="text-slate-500 text-sm">元/吨</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Backtest Summary -->
+        <section class="glass-card rounded-2xl p-6">
+          <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+            <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+            滚动回测性能 (2018-2024 样本外)
+          </h2>
+          <div class="bg-[#0f172a] rounded-xl border border-slate-700/50 p-4 overflow-x-auto">
+            <pre id="backtest" class="text-sm text-slate-300 font-mono leading-relaxed">{{ backtest_summary | tojson(indent=2) }}</pre>
+          </div>
+        </section>
+        
+        <!-- Data Quality -->
+        <section class="glass-card rounded-2xl p-6">
+          <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+            <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            数据质量监控
+          </h2>
+          <div class="overflow-x-auto rounded-xl border border-slate-700/50">
+            <table class="w-full text-sm text-left">
+              <thead class="text-xs text-slate-400 uppercase bg-slate-800/50">
+                <tr>
+                  <th class="px-4 py-3 font-medium">数据源</th>
+                  <th class="px-4 py-3 font-medium">状态</th>
+                  <th class="px-4 py-3 font-medium">缺失字段</th>
+                  <th class="px-4 py-3 font-medium text-right">重复行</th>
+                  <th class="px-4 py-3 font-medium text-right">平均空值率</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-700/50 bg-[#0f172a]/50">
+                {% for row in data_quality %}
+                <tr class="hover:bg-slate-800/30 transition-colors">
+                  <td class="px-4 py-3 font-medium text-slate-200">{{ row.source }}</td>
+                  <td class="px-4 py-3">
+                    {% if row.ok %}
+                      <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        <div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> OK
+                      </span>
+                    {% else %}
+                      <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                        <div class="w-1.5 h-1.5 rounded-full bg-rose-500"></div> Warn
+                      </span>
+                    {% endif %}
+                  </td>
+                  <td class="px-4 py-3 text-slate-400">{{ row.missing_columns or '-' }}</td>
+                  <td class="px-4 py-3 text-right text-slate-300">{{ row.duplicate_rows }}</td>
+                  <td class="px-4 py-3 text-right text-slate-300">{{ "%.2f"|format(row.avg_null_rate * 100) }}%</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- Right Column: Sidebar -->
+      <div class="space-y-6">
+        
+        <!-- Interactive Predictor -->
+        <section class="glass-card rounded-2xl p-6 border-t-4 border-t-blue-500">
+          <h2 class="text-lg font-semibold mb-2">自定义预测</h2>
+          <p class="text-sm text-slate-400 mb-4">输入服务器可访问的 CSV 路径，使用最新模型进行推理。</p>
+          
+          <div class="space-y-3">
+            <div>
+              <label for="csv" class="block text-xs font-medium text-slate-400 mb-1">数据文件路径</label>
+              <input 
+                id="csv" 
+                type="text" 
+                class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
+                placeholder="/app/data/curated/daily.csv" 
+              />
+            </div>
+            
+            <button 
+              onclick="runPredict()" 
+              id="predictBtn"
+              class="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+            >
+              <span>运行推理</span>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+            </button>
+            
+            <div id="msgContainer" class="hidden rounded-lg p-3 text-sm border">
+              <p id="msg" class="font-medium"></p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Metadata -->
+        <section class="glass-card rounded-2xl p-6">
+          <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+            <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+            模型与特征版本
+          </h2>
+          <div class="bg-[#0f172a] rounded-xl border border-slate-700/50 p-4 overflow-x-auto">
+            <pre id="metadata" class="text-xs text-slate-300 font-mono leading-relaxed">{{ metadata | tojson(indent=2) }}</pre>
+          </div>
+        </section>
+        
       </div>
     </div>
-
-    <div class="card">
-      <h3>使用你自己的 CSV 数据预测</h3>
-      <p class="muted">输入服务器可访问的 CSV 绝对路径，字段需包含：date、market_price、contract_price 及基础特征列。</p>
-      <input id="csv" placeholder="例如：/app/data/coal_prices.csv" />
-      <button onclick="runPredict()">运行预测</button>
-      <p class="muted" id="msg"></p>
-    </div>
+    
+    <!-- Footer -->
+    <footer class="text-center text-slate-500 text-sm py-6 border-t border-slate-800/50 mt-8">
+      <p>南京大学 · 计及双轨定价体系的多尺度大宗商品价格预测研究</p>
+    </footer>
+    
   </div>
 
   <script>
     async function runPredict() {
       const csvPath = document.getElementById('csv').value.trim();
       const msg = document.getElementById('msg');
-      msg.textContent = '计算中...';
+      const msgContainer = document.getElementById('msgContainer');
+      const btn = document.getElementById('predictBtn');
+      
+      // Loading state
+      btn.disabled = true;
+      btn.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> 计算中...';
+      
+      msgContainer.classList.remove('hidden', 'bg-rose-500/10', 'border-rose-500/20', 'text-rose-400', 'bg-emerald-500/10', 'border-emerald-500/20', 'text-emerald-400');
+      msgContainer.classList.add('hidden');
+
       try {
         const res = await fetch('/api/predict', {
           method: 'POST',
@@ -55,16 +237,40 @@
           body: JSON.stringify({ csv_path: csvPath || undefined })
         });
         const data = await res.json();
+        
         if (!res.ok) throw new Error(data.error || '预测失败');
-
-        document.getElementById('d1').textContent = data.next_day_market_price;
-        document.getElementById('d2').textContent = data.next_day_contract_price;
-        document.getElementById('m1').textContent = data.next_month_market_price;
-        document.getElementById('y1').textContent = data.next_year_market_price;
-        msg.textContent = '预测成功';
+        
+        // Animate value changes
+        animateValue('d1', data.next_day_market_price);
+        animateValue('d2', data.next_day_contract_price);
+        animateValue('m1', data.next_month_market_price);
+        animateValue('y1', data.next_year_market_price);
+        
+        // Success state
+        msgContainer.classList.remove('hidden');
+        msgContainer.classList.add('bg-emerald-500/10', 'border-emerald-500/20', 'text-emerald-400');
+        msg.textContent = '推理完成，结果已更新';
+        
       } catch (e) {
+        // Error state
+        msgContainer.classList.remove('hidden');
+        msgContainer.classList.add('bg-rose-500/10', 'border-rose-500/20', 'text-rose-400');
         msg.textContent = e.message;
+      } finally {
+        // Reset button
+        btn.disabled = false;
+        btn.innerHTML = '<span>运行推理</span><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>';
       }
+    }
+    
+    // Simple number animation
+    function animateValue(id, end) {
+      const obj = document.getElementById(id);
+      obj.classList.add('text-blue-400');
+      setTimeout(() => {
+        obj.textContent = end;
+        setTimeout(() => obj.classList.remove('text-blue-400'), 300);
+      }, 150);
     }
   </script>
 </body>

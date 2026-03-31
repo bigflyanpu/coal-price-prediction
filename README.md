@@ -7,15 +7,16 @@ sdk: docker
 app_port: 7860
 ---
 
-# 煤炭价格多尺度预测系统（按 PDF 技术路线实现）
+# 煤炭双轨定价多尺度预测系统（严格对齐PDF）
 
-本项目实现了一个可运行的端到端原型：
+本版本从原型升级为研究级流程，按 PDF 技术路线实现：
 
-- 日度模型：`LSTM + Transformer`（短期价格波动）
-- 月度模型：`LightGBM`（融合日度预测均值）
-- 年度模型：`RobustScaler + SVR`（长期趋势）
-- 双轨映射：将市场价预测映射到长协价预测
-- 系统层：`Flask` 网页 + API + 可部署配置（Render/Railway/Fly/自建云）
+- 数据层：结构化 + 政策文本 + 舆情文本 + 气象数据，统一契约与质检
+- NLP层：BERT语义嵌入 + LDA主题，输出12维政策冲击指数
+- 特征层：1800+多尺度因子（滞后、滚动、交互、wavelet-like）+ XGBoost筛选至200维
+- 模型层：日度 LSTM-Transformer / 月度 LightGBM / 年度 Robust-SVR / 双轨规则映射
+- 验证层：2018-2024滚动回测（样本外）
+- 系统层：Flask可视化看板 + API + Hugging Face Space部署
 
 ## 1. 安装依赖
 
@@ -25,143 +26,69 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## 2. 训练模型
+## 2. 训练（生成模型、回测、报告）
 
 ```bash
 python train.py
 ```
 
-- 若 `data/coal_prices.csv` 不存在，会自动生成示例数据并训练。
-- 训练产物保存在 `models/`。
+训练完成后产物：
 
-## 3. 本地启动网页
+- 模型：`models/`
+- 回测与报告：`reports/rolling_backtest_folds.csv`、`reports/rolling_backtest_summary.json`
+- 元数据：`reports/metadata.json`
+- 数据质量：`reports/data_quality.csv`、`reports/curated_quality.csv`
+
+## 3. 启动网页
 
 ```bash
 python app.py
 ```
 
-浏览器打开：`http://127.0.0.1:7860`
+访问：`http://127.0.0.1:7860`
 
-## 4. API 调用
+网页包含：实时预测、滚动回测摘要、模型数据版本、数据质量监控。
+
+## 4. API
+
+### 4.1 预测
 
 ```bash
 curl -X POST http://127.0.0.1:7860/api/predict   -H 'Content-Type: application/json'   -d '{}'
 ```
 
-或者使用你自己的 CSV：
+### 4.2 回测摘要
 
 ```bash
-curl -X POST http://127.0.0.1:7860/api/predict   -H 'Content-Type: application/json'   -d '{"csv_path":"/absolute/path/to/your.csv"}'
+curl http://127.0.0.1:7860/api/backtest
 ```
 
-## 5. 部署到 Hugging Face Spaces（无需绑卡，推荐）
-
-本项目已支持 **Docker Space**，可直接部署为长期稳定公网地址：
-
-- 形如：`https://<你的space名>.hf.space`
-- 例如：`https://bigflyanpu-coal-price-prediction.hf.space`
-
-### 5.1 创建 Space
-
-1. 打开 [Hugging Face Spaces](https://huggingface.co/new-space)
-2. Owner 选你的账号
-3. Space name 建议填：`coal-price-prediction`
-4. SDK 选择：`Docker`
-5. Visibility 选 `Public`（大家都能访问）
-6. 点击 `Create Space`
-
-### 5.2 上传代码（网页操作）
-
-在新 Space 页面点 `Files` -> `Add file` -> `Upload files`，把项目文件上传（保持目录结构）：
-
-- `Dockerfile`
-- `app.py`
-- `requirements.txt`
-- `src/`
-- `templates/`
-- `train.py`
-- `README.md`
-
-上传后会自动触发构建和部署，首次构建通常几分钟到十几分钟。
-
-### 5.3 上传代码（Git 命令，可选）
-
-如果你想用命令行推送：
+### 4.3 元数据
 
 ```bash
-git clone https://huggingface.co/spaces/<你的用户名>/<你的space名>
-cd <你的space名>
-# 复制项目文件到当前目录后：
-git add .
-git commit -m "Deploy coal price prediction app"
-git push
+curl http://127.0.0.1:7860/api/metadata
 ```
 
-### 5.4 如果本地无法连接 Hugging Face（推荐自动同步）
+### 4.4 数据健康
 
-如果你本机网络访问 `huggingface.co:443` 超时，可以使用项目内置的 GitHub Actions 自动同步：
+```bash
+curl http://127.0.0.1:7860/api/data-health
+```
 
-1. 打开 GitHub 仓库 `Settings` -> `Secrets and variables` -> `Actions`
-2. 新建 Secret：
-   - 名称：`HF_TOKEN`
-   - 值：你的 Hugging Face Access Token（`write` 权限）
-3. 推送代码到 GitHub `main` 分支：
-   - 工作流 `Sync to Hugging Face Space` 会自动把代码推到 `bigflyanpu/coal_price_prediction`
-4. 在 GitHub `Actions` 页面查看执行状态，成功后 Space 会自动构建
+## 5. Hugging Face Spaces部署（无需绑卡）
 
-### 5.5 部署完成后访问
+- Space：<https://huggingface.co/spaces/bigflyanpu/coal_price_prediction>
+- 应用域名：`https://<你的space名>.hf.space`
 
-访问你的固定地址：
+如果本机无法直连HF，仓库已提供 GitHub Actions 自动同步流程（`sync-to-hf-space.yml`）。
 
-- `https://<你的space名>.hf.space`
+## 6. 数据契约
 
----
+契约配置在：`config/data_contract.json`
 
-## 6. Render 方案（需要绑卡）
+四类源的必需字段：
 
-项目已包含 `render.yaml`，可直接一键部署并获得稳定地址（`*.onrender.com`）。
-
-### 5.1 一键部署（推荐）
-
-1. 把项目上传到 GitHub 仓库。
-2. 登录 [Render](https://render.com)，点击 `New +` -> `Blueprint`。
-3. 连接你的 GitHub 仓库并选择当前项目。
-4. Render 会自动读取 `render.yaml` 并创建服务。
-5. 首次部署完成后，你会得到固定域名：
-   - `https://<your-service-name>.onrender.com`
-
-> `onrender.com` 子域名是长期稳定的，不会像临时隧道链接那样频繁变化。
-
-### 5.2 绑定你自己的自定义域名（可选）
-
-如果你有自己的域名（例如 `coal.yourdomain.com`）：
-
-1. 在 Render 服务页进入 `Settings` -> `Custom Domains` -> `Add Custom Domain`。
-2. 填入你的域名，例如 `coal.yourdomain.com`。
-3. 到域名服务商（阿里云/腾讯云/Cloudflare）添加 DNS 记录：
-   - 类型：`CNAME`
-   - 主机记录：`coal`
-   - 记录值：Render 给出的目标地址
-4. 等待 DNS 生效后，Render 会自动签发 HTTPS 证书。
-
-### 5.3 每次更新自动上线
-
-- 推送代码到 GitHub 主分支后，Render 会自动重新部署。
-- 地址保持不变，访问链接长期可用。
-
-## 7. 数据格式要求（最小字段）
-
-CSV 至少包含：
-
-- `date`（日期）
-- `market_price`
-- `contract_price`
-- `policy_index`
-- `sentiment_score`
-- `temperature`
-- `precipitation`
-- `port_inventory`
-- `rail_transport`
-- `power_consumption`
-- `import_volume`
-
+- structured：`date market_price contract_price port_inventory rail_transport power_consumption import_volume coal_output industrial_value_added`
+- policy_text：`date doc_id title body source url`
+- sentiment_text：`date news_id title body media url`
+- weather：`date region temperature precipitation wind_speed`

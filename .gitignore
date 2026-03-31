@@ -6,6 +6,7 @@ __pycache__/
 # Local runtime artifacts
 models/
 data/
+reports/
 
 # Logs and environment
 *.log

@@ -6,3 +6,6 @@ lightgbm
 torch
 joblib
 gunicorn
+xgboost
+transformers
+pywavelets
