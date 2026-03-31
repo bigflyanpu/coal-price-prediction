@@ -22,6 +22,7 @@ from .models import (
     evaluate_metrics,
     predict_daily_model,
     train_daily_model,
+    predict_yearly_bundle,
     train_best_monthly_model,
     train_best_yearly_model,
 )
@@ -162,6 +163,13 @@ class CoalResearchPipeline:
             .reset_index()
         )
         yearly = yearly.merge(pred_year, on="date", how="left")
+        # Macro scenario features for yearly horizon.
+        for col in ["coal_output", "import_volume", "industrial_value_added", "policy_strength", "sentiment_heat"]:
+            if col in yearly.columns:
+                yearly[f"{col}_yoy"] = yearly[col].pct_change().replace([np.inf, -np.inf], np.nan)
+                yearly[f"{col}_trend"] = yearly[col].diff()
+        if "monthly_pred_std" in yearly.columns and "monthly_pred_mean" in yearly.columns:
+            yearly["scenario_vol_ratio"] = yearly["monthly_pred_std"] / (yearly["monthly_pred_mean"].abs() + 1e-6)
         yearly = yearly.sort_values("date").ffill().bfill()
         return yearly
 
@@ -231,7 +239,7 @@ class CoalResearchPipeline:
         x_y_train, x_y_test = x_year.iloc[:split_y], x_year.iloc[split_y:]
         y_y_train, y_y_test = y_year.iloc[:split_y], y_year.iloc[split_y:]
         yearly_bundle, yearly_params, yearly_val_mape = train_best_yearly_model(x_y_train, y_y_train)
-        year_pred = yearly_bundle.model.predict(yearly_bundle.scaler.transform(x_y_test))
+        year_pred = predict_yearly_bundle(yearly_bundle, x_y_test)
         yearly_metrics = evaluate_metrics(y_y_test.to_numpy(), year_pred)
 
         self._log("stage E: rolling backtest")

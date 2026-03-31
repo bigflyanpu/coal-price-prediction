@@ -11,7 +11,7 @@ import torch
 from flask import Flask, jsonify, render_template, request
 
 from src.features import aggregate_monthly, aggregate_yearly, build_feature_library
-from src.models import DailyBundle, LSTMTransformerRegressor, predict_daily_model
+from src.models import DailyBundle, LSTMTransformerRegressor, predict_daily_model, predict_yearly_bundle
 
 BASE = Path(__file__).parent
 MODEL_DIR = BASE / "models"
@@ -84,9 +84,7 @@ def predict_next(df: pd.DataFrame) -> dict:
 
     year_df = aggregate_yearly(df)
     year_row = year_df.reindex(columns=state["yearly_cols"], fill_value=0).iloc[[-1]]
-    year_pred = float(
-        state["yearly_bundle"].model.predict(state["yearly_bundle"].scaler.transform(year_row))[0]
-    )
+    year_pred = float(predict_yearly_bundle(state["yearly_bundle"], year_row)[0])
 
     return {
         "next_day_market_price": round(float(day_pred), 2),

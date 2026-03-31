@@ -13,6 +13,7 @@ from .models import (
     evaluate_metrics,
     predict_daily_model,
     train_daily_model,
+    predict_yearly_bundle,
     train_best_monthly_model,
     train_best_yearly_model,
 )
@@ -109,7 +110,14 @@ def rolling_backtest(df: pd.DataFrame, start_test_year: int = 2021, end_test_yea
             )
             .reset_index()
         )
-        yearly_all = yearly_all.merge(pred_year, on="date", how="left").sort_values("date").ffill().bfill()
+        yearly_all = yearly_all.merge(pred_year, on="date", how="left")
+        for col in ["coal_output", "import_volume", "industrial_value_added", "policy_strength", "sentiment_heat"]:
+            if col in yearly_all.columns:
+                yearly_all[f"{col}_yoy"] = yearly_all[col].pct_change().replace([np.inf, -np.inf], np.nan)
+                yearly_all[f"{col}_trend"] = yearly_all[col].diff()
+        if "monthly_pred_std" in yearly_all.columns and "monthly_pred_mean" in yearly_all.columns:
+            yearly_all["scenario_vol_ratio"] = yearly_all["monthly_pred_std"] / (yearly_all["monthly_pred_mean"].abs() + 1e-6)
+        yearly_all = yearly_all.sort_values("date").ffill().bfill()
         year_train = yearly_all[yearly_all["date"].dt.year < test_year].copy()
         year_test = yearly_all[yearly_all["date"].dt.year == test_year].copy()
         year_drop = [c for c in ["date", "market_price", "contract_price"] if c in year_train.columns]
@@ -119,7 +127,7 @@ def rolling_backtest(df: pd.DataFrame, start_test_year: int = 2021, end_test_yea
         y_y_test = year_test["market_price"]
         if len(x_y_train) >= 3 and len(x_y_test) >= 1:
             yearly_bundle, _, _ = train_best_yearly_model(x_y_train, y_y_train)
-            year_pred = yearly_bundle.model.predict(yearly_bundle.scaler.transform(x_y_test))
+            year_pred = predict_yearly_bundle(yearly_bundle, x_y_test)
             yearly_metrics = evaluate_metrics(y_y_test.to_numpy(), year_pred)
         else:
             yearly_metrics = {"rmse": np.nan, "mape": np.nan, "mae": np.nan}

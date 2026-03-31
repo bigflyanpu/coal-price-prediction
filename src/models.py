@@ -8,7 +8,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from lightgbm import LGBMRegressor
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.metrics import mean_absolute_percentage_error, mean_squared_error
 from sklearn.preprocessing import RobustScaler
 from sklearn.svm import SVR
@@ -159,6 +159,8 @@ def train_best_monthly_model(train_x: pd.DataFrame, train_y: pd.Series) -> Tuple
 class YearlyBundle:
     scaler: RobustScaler
     model: SVR
+    ridge: Ridge
+    blend_weight_svr: float
 
 
 def train_yearly_model(train_x: pd.DataFrame, train_y: pd.Series) -> YearlyBundle:
@@ -166,7 +168,15 @@ def train_yearly_model(train_x: pd.DataFrame, train_y: pd.Series) -> YearlyBundl
     x_scaled = scaler.fit_transform(train_x)
     model = SVR(C=12.0, epsilon=0.05, kernel="rbf", gamma="scale")
     model.fit(x_scaled, train_y)
-    return YearlyBundle(scaler=scaler, model=model)
+    ridge = Ridge(alpha=2.0, random_state=42)
+    ridge.fit(train_x, train_y)
+    return YearlyBundle(scaler=scaler, model=model, ridge=ridge, blend_weight_svr=0.65)
+
+
+def predict_yearly_bundle(bundle: YearlyBundle, x: pd.DataFrame) -> np.ndarray:
+    svr_pred = bundle.model.predict(bundle.scaler.transform(x))
+    ridge_pred = bundle.ridge.predict(x)
+    return bundle.blend_weight_svr * svr_pred + (1.0 - bundle.blend_weight_svr) * ridge_pred
 
 
 def train_best_yearly_model(train_x: pd.DataFrame, train_y: pd.Series) -> Tuple[YearlyBundle, dict, float]:
@@ -177,9 +187,9 @@ def train_best_yearly_model(train_x: pd.DataFrame, train_y: pd.Series) -> Tuple[
     y_tr, y_val = train_y.iloc[:split], train_y.iloc[split:]
 
     candidates = [
-        {"C": 8.0, "epsilon": 0.07, "kernel": "rbf"},
-        {"C": 12.0, "epsilon": 0.05, "kernel": "rbf"},
-        {"C": 20.0, "epsilon": 0.04, "kernel": "rbf"},
+        {"C": 8.0, "epsilon": 0.07, "kernel": "rbf", "blend_weight_svr": 0.55},
+        {"C": 12.0, "epsilon": 0.05, "kernel": "rbf", "blend_weight_svr": 0.65},
+        {"C": 20.0, "epsilon": 0.04, "kernel": "rbf", "blend_weight_svr": 0.75},
     ]
 
     best_params = candidates[0]
@@ -187,13 +197,20 @@ def train_best_yearly_model(train_x: pd.DataFrame, train_y: pd.Series) -> Tuple[
     for params in candidates:
         scaler = RobustScaler()
         x_tr_scaled = scaler.fit_transform(x_tr)
-        model = SVR(gamma="scale", **params)
+        svr_params = {k: v for k, v in params.items() if k != "blend_weight_svr"}
+        model = SVR(gamma="scale", **svr_params)
         model.fit(x_tr_scaled, y_tr)
+        ridge = Ridge(alpha=2.0, random_state=42)
+        ridge.fit(x_tr, y_tr)
         if len(x_val) > 0:
-            pred = model.predict(scaler.transform(x_val))
+            svr_pred = model.predict(scaler.transform(x_val))
+            ridge_pred = ridge.predict(x_val)
+            pred = params["blend_weight_svr"] * svr_pred + (1.0 - params["blend_weight_svr"]) * ridge_pred
             score = float(mean_absolute_percentage_error(y_val, pred))
         else:
-            pred = model.predict(x_tr_scaled)
+            svr_pred = model.predict(x_tr_scaled)
+            ridge_pred = ridge.predict(x_tr)
+            pred = params["blend_weight_svr"] * svr_pred + (1.0 - params["blend_weight_svr"]) * ridge_pred
             score = float(mean_absolute_percentage_error(y_tr, pred))
         if score < best_score:
             best_score = score
@@ -201,9 +218,21 @@ def train_best_yearly_model(train_x: pd.DataFrame, train_y: pd.Series) -> Tuple[
 
     final_scaler = RobustScaler()
     x_full_scaled = final_scaler.fit_transform(train_x)
-    final_model = SVR(gamma="scale", **best_params)
+    svr_params = {k: v for k, v in best_params.items() if k != "blend_weight_svr"}
+    final_model = SVR(gamma="scale", **svr_params)
     final_model.fit(x_full_scaled, train_y)
-    return YearlyBundle(scaler=final_scaler, model=final_model), best_params, best_score
+    final_ridge = Ridge(alpha=2.0, random_state=42)
+    final_ridge.fit(train_x, train_y)
+    return (
+        YearlyBundle(
+            scaler=final_scaler,
+            model=final_model,
+            ridge=final_ridge,
+            blend_weight_svr=float(best_params["blend_weight_svr"]),
+        ),
+        best_params,
+        best_score,
+    )
 
 
 @dataclass
