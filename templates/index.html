@@ -73,6 +73,10 @@
 
     .pill-ok{padding:2px 8px;border-radius:999px;font-size:11px;background:rgba(34,197,94,.16);border:1px solid rgba(34,197,94,.35);color:#92f8b8}
     .pill-warn{padding:2px 8px;border-radius:999px;font-size:11px;background:rgba(251,113,133,.16);border:1px solid rgba(251,113,133,.35);color:#ffc3ce}
+    .pill-mid{padding:2px 8px;border-radius:999px;font-size:11px;background:rgba(245,158,11,.16);border:1px solid rgba(245,158,11,.38);color:#ffd18a}
+    .row-good{background:rgba(34,197,94,.08)}
+    .row-warn{background:rgba(245,158,11,.08)}
+    .row-critical{background:rgba(251,113,133,.12)}
 
     .footer{text-align:center;margin-top:14px;color:#7f95c3;font-size:12px}
 
@@ -185,6 +189,67 @@
           <div class="head"><h2>模型版本</h2></div>
           <div class="body"><pre id="versionRaw">{{ metadata.model_versions | tojson(indent=2) }}</pre></div>
         </section>
+
+        <section class="card">
+          <div class="head"><h2>NLP源健康监控</h2><span class="tag">Text Source Health</span></div>
+          <div class="body" style="overflow:auto;">
+            <label style="display:flex;align-items:center;gap:6px;color:#a4b7de;font-size:12px;margin-bottom:8px;">
+              <input id="onlyAlertToggle" type="checkbox" style="width:auto;accent-color:#f59e0b" onchange="toggleOnlyAlerts()" />
+              仅看告警源（WARN/CRITICAL）
+            </label>
+            <table>
+              <thead><tr><th>索引类型</th><th>质量分</th><th>状态</th><th>覆盖率</th><th>告警</th></tr></thead>
+              <tbody>
+                {% for key in ["policy_text", "sentiment_text"] %}
+                {% set item = dashboard_data.nlp_layer.text_source_health.get(key, {}) %}
+                {% set st = item.get("quality_status", "na") %}
+                <tr class="{% if st == 'good' %}row-good{% elif st == 'warn' %}row-warn{% else %}row-critical{% endif %}">
+                  <td>{{ key }}</td>
+                  <td>{{ item.get("quality_score", 0) }}</td>
+                  <td>
+                    {% if item.get("quality_status") == "good" %}
+                      <span class="pill-ok">GOOD</span>
+                    {% elif item.get("quality_status") == "warn" %}
+                      <span class="pill-mid">WARN</span>
+                    {% else %}
+                      <span class="pill-warn">{{ item.get("quality_status", "NA") | upper }}</span>
+                    {% endif %}
+                  </td>
+                  <td>{{ "%.2f"|format((item.get("coverage_ratio", 0) or 0) * 100) }}%</td>
+                  <td>{{ (item.get("quality_alerts", []) | join("; ")) or "-" }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            <table style="margin-top:10px">
+              <thead><tr><th>源名称</th><th>类型</th><th>质量分</th><th>状态</th><th>抓取/入库</th><th>告警</th></tr></thead>
+              <tbody id="sourceHealthBody">
+                {% for key in ["policy_text", "sentiment_text"] %}
+                  {% set item = dashboard_data.nlp_layer.text_source_health.get(key, {}) %}
+                  {% for src in item.get("sources_detail", []) %}
+                    {% set sst = src.get("quality_status", "na") %}
+                    <tr class="{% if sst == 'good' %}row-good{% elif sst == 'warn' %}row-warn{% else %}row-critical{% endif %}" data-status="{{ sst }}">
+                      <td>{{ src.get("source_name", "-") }}</td>
+                      <td>{{ key }}</td>
+                      <td>{{ src.get("quality_score", 0) }}</td>
+                      <td>
+                        {% if src.get("quality_status") == "good" %}
+                          <span class="pill-ok">GOOD</span>
+                        {% elif src.get("quality_status") == "warn" %}
+                          <span class="pill-mid">WARN</span>
+                        {% else %}
+                          <span class="pill-warn">{{ src.get("quality_status", "NA") | upper }}</span>
+                        {% endif %}
+                      </td>
+                      <td>{{ src.get("fetched", 0) }}/{{ src.get("accepted", 0) }}</td>
+                      <td>{{ (src.get("quality_alerts", []) | join("; ")) or "-" }}</td>
+                    </tr>
+                  {% endfor %}
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
     </div>
 
@@ -242,6 +307,19 @@
       const e = document.getElementById(id);
       e.style.color = '#7cb0ff';
       setTimeout(() => { e.style.color = '#f5f8ff'; }, 360);
+    }
+
+    function toggleOnlyAlerts(){
+      const onlyAlerts = document.getElementById('onlyAlertToggle')?.checked;
+      const rows = document.querySelectorAll('#sourceHealthBody tr[data-status]');
+      rows.forEach((row) => {
+        const st = (row.getAttribute('data-status') || '').toLowerCase();
+        if(!onlyAlerts){
+          row.style.display = '';
+          return;
+        }
+        row.style.display = (st === 'warn' || st === 'critical') ? '' : 'none';
+      });
     }
 
     async function runPredict(){

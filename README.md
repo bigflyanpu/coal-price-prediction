@@ -18,6 +18,15 @@ app_port: 7860
 - 验证层：2018-2024滚动回测（样本外）
 - 系统层：Flask可视化看板 + API + Hugging Face Space部署
 
+文本数据采集链路已升级为“生产化增量模式”：
+
+- 优先抓取可配置政策/舆情 RSS 源（`config/text_sources.json`）
+- 自动重试与退避、按时间窗口增量抓取、跨轮去重
+- 运行状态与健康报告自动落盘（`reports/text_source_runs.csv`、`reports/text_source_health.json`）
+- 内置源级质量评分与告警阈值（`quality_alert`）
+- 支持按源覆盖阈值（`quality_alert_overrides`）
+- 抓取失败时自动回退：历史本地源数据 -> 模拟兜底数据
+
 ## 1. 安装依赖
 
 ```bash
@@ -31,6 +40,12 @@ pip install -r requirements.txt
 ```bash
 python train.py
 ```
+
+可选环境变量：
+
+- `FAST_MODE=1`：快速训练（默认关闭实时文本抓取）
+- `LIVE_TEXT_SOURCES=1`：强制开启实时文本抓取
+- `LIVE_TEXT_SOURCES=0`：强制关闭实时文本抓取
 
 训练完成后产物：
 
@@ -73,6 +88,20 @@ curl http://127.0.0.1:7860/api/metadata
 
 ```bash
 curl http://127.0.0.1:7860/api/data-health
+```
+
+### 4.5 文本源健康
+
+```bash
+curl http://127.0.0.1:7860/api/text-source-health
+```
+
+支持过滤参数（便于巡检）：
+
+```bash
+curl "http://127.0.0.1:7860/api/text-source-health?kind=policy_text"
+curl "http://127.0.0.1:7860/api/text-source-health?status=critical"
+curl "http://127.0.0.1:7860/api/text-source-health?kind=sentiment_text&status=warn"
 ```
 
 ## 5. Hugging Face Spaces部署（无需绑卡）

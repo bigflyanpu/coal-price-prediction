@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import os
 from pathlib import Path
 from typing import Dict, Any
 import json
@@ -68,7 +69,12 @@ class CoalResearchPipeline:
             return pd.read_csv(self.data_path, parse_dates=["date"])
 
         self._log("stage A: multi-source ingestion")
-        ingestor = MultiSourceIngestor(IngestionConfig())
+        live_text_enabled = os.getenv("LIVE_TEXT_SOURCES")
+        if live_text_enabled is None:
+            use_live_text = not self.train_cfg.fast_mode
+        else:
+            use_live_text = live_text_enabled == "1"
+        ingestor = MultiSourceIngestor(IngestionConfig(use_live_text_sources=use_live_text))
         _, _ = ingestor.run()
 
         structured = pd.read_csv("data/raw/structured.csv", parse_dates=["date"])

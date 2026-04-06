@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import pandas as pd
 
 from .data_contract import DataContract, ValidationResult
+from .text_sources import TextSourceCollector
 
 
 @dataclass
@@ -18,6 +18,8 @@ class IngestionConfig:
     source_dir: str | Path = "data/sources"
     raw_dir: str | Path = "data/raw"
     curated_dir: str | Path = "data/curated"
+    use_live_text_sources: bool = True
+    text_source_config_path: str | Path = "config/text_sources.json"
 
 
 class MultiSourceIngestor:
@@ -25,17 +27,33 @@ class MultiSourceIngestor:
         self.cfg = cfg
         self.contract = DataContract()
         self.rng = np.random.default_rng(cfg.seed)
+        self.source_dir = Path(cfg.source_dir)
+        self.source_dir.mkdir(parents=True, exist_ok=True)
+        self.text_collector = TextSourceCollector(cfg.text_source_config_path) if cfg.use_live_text_sources else None
 
     def _date_index(self) -> pd.DatetimeIndex:
         return pd.date_range(self.cfg.start, self.cfg.end, freq="D")
 
     def _load_or_generate(self, name: str, generator) -> pd.DataFrame:
-        path = Path(self.cfg.source_dir) / f"{name}.csv"
+        path = self.source_dir / f"{name}.csv"
         if path.exists():
             df = pd.read_csv(path)
         else:
             df = generator()
         return df
+
+    def _load_existing_source(self, name: str) -> pd.DataFrame:
+        path = self.source_dir / f"{name}.csv"
+        if not path.exists():
+            return pd.DataFrame()
+        try:
+            return pd.read_csv(path)
+        except Exception:
+            return pd.DataFrame()
+
+    def _persist_source(self, name: str, df: pd.DataFrame) -> None:
+        path = self.source_dir / f"{name}.csv"
+        df.to_csv(path, index=False)
 
     def ingest_structured(self) -> pd.DataFrame:
         def _gen() -> pd.DataFrame:
@@ -93,9 +111,25 @@ class MultiSourceIngestor:
                     )
             return pd.DataFrame(records)
 
-        df = self._load_or_generate("policy_text", _gen)
+        existing = self._load_existing_source("policy_text")
+        df = pd.DataFrame()
+        if self.text_collector is not None:
+            try:
+                df = self.text_collector.collect(
+                    kind="policy_text",
+                    start=self.cfg.start,
+                    end=self.cfg.end,
+                    existing_df=existing,
+                )
+            except Exception:
+                df = pd.DataFrame()
+
+        if df.empty and not existing.empty:
+            df = existing
         if df.empty:
             df = _gen()
+
+        self._persist_source("policy_text", df)
         df["date"] = pd.to_datetime(df["date"])
         return df.sort_values("date").reset_index(drop=True)
 
@@ -124,9 +158,25 @@ class MultiSourceIngestor:
                     )
             return pd.DataFrame(records)
 
-        df = self._load_or_generate("sentiment_text", _gen)
+        existing = self._load_existing_source("sentiment_text")
+        df = pd.DataFrame()
+        if self.text_collector is not None:
+            try:
+                df = self.text_collector.collect(
+                    kind="sentiment_text",
+                    start=self.cfg.start,
+                    end=self.cfg.end,
+                    existing_df=existing,
+                )
+            except Exception:
+                df = pd.DataFrame()
+
+        if df.empty and not existing.empty:
+            df = existing
         if df.empty:
             df = _gen()
+
+        self._persist_source("sentiment_text", df)
         df["date"] = pd.to_datetime(df["date"])
         return df.sort_values("date").reset_index(drop=True)
 

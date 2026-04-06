@@ -27,6 +27,34 @@ def _load_json(path: Path, default):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _load_text_source_health() -> dict:
+    return _load_json(REPORT_DIR / "text_source_health.json", {})
+
+
+def _filter_text_source_health(health: dict, kind: str | None, status: str | None) -> dict:
+    kind_filter = (kind or "").strip().lower()
+    status_filter = (status or "").strip().lower()
+    valid_kind = {"policy_text", "sentiment_text"}
+    valid_status = {"good", "warn", "critical"}
+
+    if kind_filter and kind_filter not in valid_kind:
+        kind_filter = ""
+    if status_filter and status_filter not in valid_status:
+        status_filter = ""
+
+    out = {}
+    for k, item in health.items():
+        if kind_filter and k != kind_filter:
+            continue
+        entry = dict(item)
+        details = list(item.get("sources_detail", []))
+        if status_filter:
+            details = [d for d in details if str(d.get("quality_status", "")).lower() == status_filter]
+        entry["sources_detail"] = details
+        out[k] = entry
+    return out
+
+
 def load_models():
     daily_meta = joblib.load(MODEL_DIR / "daily_meta.joblib")
     monthly_meta = joblib.load(MODEL_DIR / "monthly_meta.joblib")
@@ -100,6 +128,7 @@ def build_dashboard_data(
     backtest_summary: dict,
     metadata: dict,
     data_quality: list[dict],
+    text_source_health: dict,
 ) -> dict:
     recent = base_data.sort_values("date").tail(90).copy()
     recent["date"] = pd.to_datetime(recent["date"])
@@ -149,6 +178,7 @@ def build_dashboard_data(
             "timeline": timeline,
             "policy_strength": policy_series,
             "sentiment_score": sentiment_series,
+            "text_source_health": text_source_health,
         },
         "market_layer": {
             "timeline": timeline,
@@ -171,12 +201,14 @@ def index():
     q_path = REPORT_DIR / "data_quality.csv"
     if q_path.exists():
         data_quality = pd.read_csv(q_path).to_dict(orient="records")
+    text_source_health = _load_text_source_health()
     dashboard_data = build_dashboard_data(
         base_data=state["base_data"],
         prediction=prediction,
         backtest_summary=backtest_summary,
         metadata=metadata,
         data_quality=data_quality,
+        text_source_health=text_source_health,
     )
 
     return render_template(
@@ -224,6 +256,14 @@ def data_health_api():
     return jsonify(pd.read_csv(path).to_dict(orient="records"))
 
 
+@app.route("/api/text-source-health")
+def text_source_health_api():
+    kind = request.args.get("kind")
+    status = request.args.get("status")
+    data = _filter_text_source_health(_load_text_source_health(), kind=kind, status=status)
+    return jsonify(data)
+
+
 @app.route("/api/dashboard")
 def dashboard_api():
     state = ensure_state()
@@ -232,6 +272,7 @@ def dashboard_api():
     metadata = _load_json(REPORT_DIR / "metadata.json", {})
     q_path = REPORT_DIR / "data_quality.csv"
     data_quality = pd.read_csv(q_path).to_dict(orient="records") if q_path.exists() else []
+    text_source_health = _load_text_source_health()
     return jsonify(
         build_dashboard_data(
             base_data=state["base_data"],
@@ -239,6 +280,7 @@ def dashboard_api():
             backtest_summary=backtest_summary,
             metadata=metadata,
             data_quality=data_quality,
+            text_source_health=text_source_health,
         )
     )
 
