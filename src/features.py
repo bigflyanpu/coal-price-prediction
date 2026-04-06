@@ -141,3 +141,44 @@ def aggregate_yearly(df: pd.DataFrame) -> pd.DataFrame:
     yearly = df.set_index("date").resample("YS").agg(agg_dict).reset_index()
     yearly["year"] = yearly["date"].dt.year
     return yearly
+
+
+def enrich_yearly_features(yearly_df: pd.DataFrame) -> pd.DataFrame:
+    out = yearly_df.sort_values("date").copy()
+
+    base_cols = [
+        "coal_output",
+        "import_volume",
+        "industrial_value_added",
+        "policy_strength",
+        "sentiment_heat",
+        "sentiment_score",
+        "power_consumption",
+        "port_inventory",
+        "rail_transport",
+    ]
+    for col in base_cols:
+        if col in out.columns:
+            out[f"{col}_yoy"] = out[col].pct_change().replace([np.inf, -np.inf], np.nan)
+            out[f"{col}_trend"] = out[col].diff()
+            out[f"{col}_ma2"] = out[col].rolling(2, min_periods=1).mean()
+            out[f"{col}_vol3"] = out[col].rolling(3, min_periods=2).std()
+
+    if "monthly_pred_std" in out.columns and "monthly_pred_mean" in out.columns:
+        out["scenario_vol_ratio"] = out["monthly_pred_std"] / (out["monthly_pred_mean"].abs() + 1e-6)
+        out["monthly_pred_cv"] = out["monthly_pred_std"] / (out["monthly_pred_mean"].abs() + 1e-6)
+    if "monthly_pred_max" in out.columns and "monthly_pred_min" in out.columns:
+        out["monthly_pred_range"] = out["monthly_pred_max"] - out["monthly_pred_min"]
+
+    if "policy_strength" in out.columns and "sentiment_score" in out.columns:
+        out["policy_sentiment_gap"] = out["policy_strength"] - out["sentiment_score"]
+    if "coal_output" in out.columns and "import_volume" in out.columns and "power_consumption" in out.columns:
+        out["supply_demand_ratio"] = (out["coal_output"] + out["import_volume"]) / (out["power_consumption"].abs() + 1e-6)
+    if "port_inventory" in out.columns and "rail_transport" in out.columns:
+        out["inventory_transport_ratio"] = out["port_inventory"] / (out["rail_transport"].abs() + 1e-6)
+
+    if "year" in out.columns:
+        out["year_index"] = out["year"] - int(out["year"].min())
+
+    out = out.replace([np.inf, -np.inf], np.nan).ffill().bfill().fillna(0.0)
+    return out

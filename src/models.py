@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List
 
 import numpy as np
 import pandas as pd
@@ -174,55 +174,114 @@ def train_yearly_model(train_x: pd.DataFrame, train_y: pd.Series) -> YearlyBundl
 
 
 def predict_yearly_bundle(bundle: YearlyBundle, x: pd.DataFrame) -> np.ndarray:
+    x = x.replace([np.inf, -np.inf], np.nan).ffill().bfill().fillna(0.0)
     svr_pred = bundle.model.predict(bundle.scaler.transform(x))
     ridge_pred = bundle.ridge.predict(x)
     return bundle.blend_weight_svr * svr_pred + (1.0 - bundle.blend_weight_svr) * ridge_pred
 
 
 def train_best_yearly_model(train_x: pd.DataFrame, train_y: pd.Series) -> Tuple[YearlyBundle, dict, float]:
-    split = max(3, int(len(train_x) * 0.8))
-    if split >= len(train_x):
-        split = max(1, len(train_x) - 1)
-    x_tr, x_val = train_x.iloc[:split], train_x.iloc[split:]
-    y_tr, y_val = train_y.iloc[:split], train_y.iloc[split:]
+    train_x = (
+        train_x.replace([np.inf, -np.inf], np.nan)
+        .ffill()
+        .bfill()
+        .fillna(0.0)
+    )
+    train_y = pd.Series(train_y).replace([np.inf, -np.inf], np.nan).ffill().bfill().fillna(0.0)
+
+    n = len(train_x)
+    if n < 3:
+        bundle = train_yearly_model(train_x, train_y)
+        return bundle, {"fallback": True}, float("inf")
 
     candidates = [
-        {"C": 8.0, "epsilon": 0.07, "kernel": "rbf", "blend_weight_svr": 0.55},
-        {"C": 12.0, "epsilon": 0.05, "kernel": "rbf", "blend_weight_svr": 0.65},
-        {"C": 20.0, "epsilon": 0.04, "kernel": "rbf", "blend_weight_svr": 0.75},
+        {"C": 6.0, "epsilon": 0.10, "kernel": "rbf", "ridge_alpha": 1.0},
+        {"C": 10.0, "epsilon": 0.08, "kernel": "rbf", "ridge_alpha": 2.0},
+        {"C": 14.0, "epsilon": 0.06, "kernel": "rbf", "ridge_alpha": 3.0},
+        {"C": 20.0, "epsilon": 0.05, "kernel": "rbf", "ridge_alpha": 4.0},
     ]
+    blend_weights = [0.45, 0.55, 0.65, 0.75]
 
-    best_params = candidates[0]
+    val_split_points: List[int] = []
+    start = max(3, int(n * 0.6))
+    for s in range(start, n):
+        if s < n:
+            val_split_points.append(s)
+    if not val_split_points:
+        val_split_points = [max(1, n - 1)]
+
+    best_params = {
+        **candidates[0],
+        "blend_weight_svr": blend_weights[0],
+    }
     best_score = float("inf")
+    experiment_rows: list[dict] = []
+
     for params in candidates:
-        scaler = RobustScaler()
-        x_tr_scaled = scaler.fit_transform(x_tr)
-        svr_params = {k: v for k, v in params.items() if k != "blend_weight_svr"}
-        model = SVR(gamma="scale", **svr_params)
-        model.fit(x_tr_scaled, y_tr)
-        ridge = Ridge(alpha=2.0, random_state=42)
-        ridge.fit(x_tr, y_tr)
-        if len(x_val) > 0:
-            svr_pred = model.predict(scaler.transform(x_val))
+        fold_scores = []
+        for split in val_split_points:
+            x_tr, x_val = train_x.iloc[:split], train_x.iloc[split:]
+            y_tr, y_val = train_y.iloc[:split], train_y.iloc[split:]
+            if len(x_tr) < 2 or len(x_val) < 1:
+                continue
+
+            scaler = RobustScaler()
+            x_tr_scaled = scaler.fit_transform(x_tr)
+            svr_params = {k: v for k, v in params.items() if k not in {"ridge_alpha"}}
+            svr = SVR(gamma="scale", **svr_params)
+            svr.fit(x_tr_scaled, y_tr)
+
+            ridge = Ridge(alpha=float(params["ridge_alpha"]), random_state=42)
+            ridge.fit(x_tr, y_tr)
+
+            svr_pred = svr.predict(scaler.transform(x_val))
             ridge_pred = ridge.predict(x_val)
-            pred = params["blend_weight_svr"] * svr_pred + (1.0 - params["blend_weight_svr"]) * ridge_pred
-            score = float(mean_absolute_percentage_error(y_val, pred))
-        else:
-            svr_pred = model.predict(x_tr_scaled)
-            ridge_pred = ridge.predict(x_tr)
-            pred = params["blend_weight_svr"] * svr_pred + (1.0 - params["blend_weight_svr"]) * ridge_pred
-            score = float(mean_absolute_percentage_error(y_tr, pred))
-        if score < best_score:
-            best_score = score
-            best_params = params
+
+            for w in blend_weights:
+                pred = w * svr_pred + (1.0 - w) * ridge_pred
+                score = float(mean_absolute_percentage_error(y_val, pred))
+                fold_scores.append((w, score))
+
+        if not fold_scores:
+            continue
+
+        # aggregate by blend weight to select robust setting.
+        weight_to_scores: dict[float, list[float]] = {}
+        for w, sc in fold_scores:
+            weight_to_scores.setdefault(float(w), []).append(float(sc))
+
+        for w, scores in weight_to_scores.items():
+            mean_score = float(np.mean(scores))
+            experiment_rows.append(
+                {
+                    "C": params["C"],
+                    "epsilon": params["epsilon"],
+                    "kernel": params["kernel"],
+                    "ridge_alpha": params["ridge_alpha"],
+                    "blend_weight_svr": w,
+                    "cv_mape": mean_score,
+                    "n_folds": len(scores),
+                }
+            )
+            if mean_score < best_score:
+                best_score = mean_score
+                best_params = {
+                    **params,
+                    "blend_weight_svr": w,
+                }
 
     final_scaler = RobustScaler()
     x_full_scaled = final_scaler.fit_transform(train_x)
-    svr_params = {k: v for k, v in best_params.items() if k != "blend_weight_svr"}
+    svr_params = {k: v for k, v in best_params.items() if k not in {"blend_weight_svr", "ridge_alpha"}}
     final_model = SVR(gamma="scale", **svr_params)
     final_model.fit(x_full_scaled, train_y)
-    final_ridge = Ridge(alpha=2.0, random_state=42)
+    final_ridge = Ridge(alpha=float(best_params.get("ridge_alpha", 2.0)), random_state=42)
     final_ridge.fit(train_x, train_y)
+
+    exp_df = pd.DataFrame(experiment_rows)
+    if not exp_df.empty:
+        exp_df = exp_df.sort_values("cv_mape")
+
     return (
         YearlyBundle(
             scaler=final_scaler,
@@ -230,8 +289,16 @@ def train_best_yearly_model(train_x: pd.DataFrame, train_y: pd.Series) -> Tuple[
             ridge=final_ridge,
             blend_weight_svr=float(best_params["blend_weight_svr"]),
         ),
-        best_params,
-        best_score,
+        {
+            "best": best_params,
+            "search_space": {
+                "candidates": candidates,
+                "blend_weights": blend_weights,
+                "val_splits": val_split_points,
+            },
+            "cv_top": exp_df.head(8).to_dict(orient="records") if not exp_df.empty else [],
+        },
+        float(best_score),
     )
 
 

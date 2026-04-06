@@ -15,7 +15,14 @@ import torch
 
 from .backtest import rolling_backtest
 from .data_contract import DataContract
-from .features import FeatureConfig, aggregate_monthly, aggregate_yearly, build_feature_library, select_core_features_xgboost
+from .features import (
+    FeatureConfig,
+    aggregate_monthly,
+    aggregate_yearly,
+    build_feature_library,
+    enrich_yearly_features,
+    select_core_features_xgboost,
+)
 from .ingestion import IngestionConfig, MultiSourceIngestor
 from .models import (
     ContractPriceMapper,
@@ -169,13 +176,7 @@ class CoalResearchPipeline:
             .reset_index()
         )
         yearly = yearly.merge(pred_year, on="date", how="left")
-        # Macro scenario features for yearly horizon.
-        for col in ["coal_output", "import_volume", "industrial_value_added", "policy_strength", "sentiment_heat"]:
-            if col in yearly.columns:
-                yearly[f"{col}_yoy"] = yearly[col].pct_change().replace([np.inf, -np.inf], np.nan)
-                yearly[f"{col}_trend"] = yearly[col].diff()
-        if "monthly_pred_std" in yearly.columns and "monthly_pred_mean" in yearly.columns:
-            yearly["scenario_vol_ratio"] = yearly["monthly_pred_std"] / (yearly["monthly_pred_mean"].abs() + 1e-6)
+        yearly = enrich_yearly_features(yearly)
         yearly = yearly.sort_values("date").ffill().bfill()
         return yearly
 
@@ -247,6 +248,19 @@ class CoalResearchPipeline:
         yearly_bundle, yearly_params, yearly_val_mape = train_best_yearly_model(x_y_train, y_y_train)
         year_pred = predict_yearly_bundle(yearly_bundle, x_y_test)
         yearly_metrics = evaluate_metrics(y_y_test.to_numpy(), year_pred)
+        Path("reports/yearly_model_experiments.json").write_text(
+            json.dumps(
+                {
+                    "best_params": yearly_params.get("best", yearly_params),
+                    "val_mape": yearly_val_mape,
+                    "cv_top": yearly_params.get("cv_top", []),
+                    "search_space": yearly_params.get("search_space", {}),
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
 
         self._log("stage E: rolling backtest")
         if self.train_cfg.fast_mode:

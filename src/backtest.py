@@ -6,7 +6,7 @@ from typing import Dict, List
 import numpy as np
 import pandas as pd
 
-from .features import aggregate_monthly, aggregate_yearly, build_feature_library, select_core_features_xgboost
+from .features import aggregate_monthly, aggregate_yearly, build_feature_library, enrich_yearly_features, select_core_features_xgboost
 from .models import (
     ContractPriceMapper,
     DailyTrainerConfig,
@@ -111,12 +111,7 @@ def rolling_backtest(df: pd.DataFrame, start_test_year: int = 2021, end_test_yea
             .reset_index()
         )
         yearly_all = yearly_all.merge(pred_year, on="date", how="left")
-        for col in ["coal_output", "import_volume", "industrial_value_added", "policy_strength", "sentiment_heat"]:
-            if col in yearly_all.columns:
-                yearly_all[f"{col}_yoy"] = yearly_all[col].pct_change().replace([np.inf, -np.inf], np.nan)
-                yearly_all[f"{col}_trend"] = yearly_all[col].diff()
-        if "monthly_pred_std" in yearly_all.columns and "monthly_pred_mean" in yearly_all.columns:
-            yearly_all["scenario_vol_ratio"] = yearly_all["monthly_pred_std"] / (yearly_all["monthly_pred_mean"].abs() + 1e-6)
+        yearly_all = enrich_yearly_features(yearly_all)
         yearly_all = yearly_all.sort_values("date").ffill().bfill()
         year_train = yearly_all[yearly_all["date"].dt.year < test_year].copy()
         year_test = yearly_all[yearly_all["date"].dt.year == test_year].copy()
