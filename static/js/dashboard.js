@@ -21,7 +21,8 @@ const app = createApp({
 
     const fetchDashboard = async () => {
       try {
-        const res = await fetch('/api/dashboard_full');
+        const res = await fetch('/api/dashboard_full?t=' + new Date().getTime());
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
         const data = await res.json();
         prediction.value = data.prediction;
         backtestSummary.value = data.backtest_summary;
@@ -35,6 +36,7 @@ const app = createApp({
       } catch (err) {
         console.error('Failed to load dashboard data:', err);
         msg.value = { type: 'err', text: '无法加载初始数据，请检查服务状态。' };
+        loading.value = false; // 确保发生错误时关闭 loading
       }
     };
 
