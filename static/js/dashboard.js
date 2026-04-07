@@ -19,14 +19,47 @@ const app = createApp({
 
     let chartInstance = null;
 
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
     const fetchDashboard = async () => {
+      const endpoints = ['/api/dashboard_full', '/api/dashboard'];
+      let lastErr = null;
       try {
-        const res = await fetch('/api/dashboard_full?t=' + new Date().getTime());
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-        const data = await res.json();
-        prediction.value = data.prediction;
-        backtestSummary.value = data.backtest_summary;
-        dashboardData.value = data.dashboard_data;
+        let data = null;
+        for (const ep of endpoints) {
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              const res = await fetch(ep + '?t=' + new Date().getTime());
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              const body = await res.json();
+              if (ep === '/api/dashboard_full') {
+                data = body;
+              } else {
+                // fallback endpoint response shape
+                data = {
+                  prediction: body.prediction || {},
+                  backtest_summary: body.backtest_summary || {},
+                  dashboard_data: body || {},
+                };
+              }
+              break;
+            } catch (err) {
+              lastErr = err;
+              if (attempt < 3) {
+                await sleep(700 * attempt);
+              }
+            }
+          }
+          if (data) break;
+        }
+
+        if (!data) {
+          throw lastErr || new Error('无法获取仪表盘数据');
+        }
+
+        prediction.value = data.prediction || {};
+        backtestSummary.value = data.backtest_summary || {};
+        dashboardData.value = data.dashboard_data || {};
         loading.value = false;
         
         // Init chart after DOM updates
@@ -43,6 +76,10 @@ const app = createApp({
     const initChart = () => {
       const chartDom = document.getElementById('mapeChart');
       if (!chartDom) return;
+      if (typeof echarts === 'undefined') {
+        chartDom.innerHTML = '<div style="padding:12px;color:#ef4444;font-size:12px;">图表库加载失败，请刷新页面重试。</div>';
+        return;
+      }
       
       chartInstance = echarts.init(chartDom, 'dark');
       
