@@ -83,12 +83,35 @@ def load_models():
 
 
 STATE = None
+STATE_SIGNATURE = None
+
+
+def _model_signature() -> tuple[float, ...]:
+    files = [
+        MODEL_DIR / "daily_model.pt",
+        MODEL_DIR / "daily_meta.joblib",
+        MODEL_DIR / "monthly_model.joblib",
+        MODEL_DIR / "monthly_meta.joblib",
+        MODEL_DIR / "yearly_bundle.joblib",
+        MODEL_DIR / "yearly_meta.joblib",
+        MODEL_DIR / "contract_mapper.joblib",
+        MODEL_DIR / "base_data.joblib",
+    ]
+    signature = []
+    for p in files:
+        if not p.exists():
+            signature.append(0.0)
+        else:
+            signature.append(p.stat().st_mtime)
+    return tuple(signature)
 
 
 def ensure_state():
-    global STATE
-    if STATE is None:
+    global STATE, STATE_SIGNATURE
+    sig = _model_signature()
+    if STATE is None or STATE_SIGNATURE != sig:
         STATE = load_models()
+        STATE_SIGNATURE = sig
     return STATE
 
 

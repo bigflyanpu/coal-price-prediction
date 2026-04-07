@@ -87,9 +87,9 @@
 <body>
   <div class="wrap">
     <section class="hero">
-      <h1>煤炭价格预测答辩级仪表盘</h1>
-      <p>按 PDF 技术路线映射：数据层、NLP 指数层、特征层、模型层、验证层、系统层。页面即展示每一层落地结果。</p>
-      <div class="badge"><span class="dot"></span>系统在线 · 最新模型已加载</div>
+      <h1>煤炭价格预测在线系统</h1>
+      <p>仅保留核心使用模块：预测结果、回测摘要、在线调用。</p>
+      <div class="badge"><span class="dot"></span>系统在线 · 自动同步最新模型</div>
     </section>
 
     <div class="grid">
@@ -102,20 +102,6 @@
               <div class="k"><p class="l">次日长协价</p><p class="n" id="d2">{{ prediction.next_day_contract_price }}</p><p class="u">元/吨</p></div>
               <div class="k"><p class="l">次月市场价</p><p class="n" id="m1">{{ prediction.next_month_market_price }}</p><p class="u">元/吨</p></div>
               <div class="k"><p class="l">次年市场价</p><p class="n" id="y1">{{ prediction.next_year_market_price }}</p><p class="u">元/吨</p></div>
-            </div>
-          </div>
-        </section>
-
-        <section class="card">
-          <div class="head"><h2>NLP 层：政策冲击与舆情趋势</h2><span class="tag">Policy + Sentiment</span></div>
-          <div class="body cols2">
-            <div class="panel">
-              <h3>政策强度（近90天）</h3>
-              <div class="chart"><svg id="policyChart" viewBox="0 0 1000 260" preserveAspectRatio="none"></svg></div>
-            </div>
-            <div class="panel">
-              <h3>舆情情绪（近90天）</h3>
-              <div class="chart"><svg id="sentChart" viewBox="0 0 1000 260" preserveAspectRatio="none"></svg></div>
             </div>
           </div>
         </section>
@@ -138,26 +124,6 @@
             </div>
           </div>
         </section>
-
-        <section class="card">
-          <div class="head"><h2>数据层：数据质量与覆盖</h2><span class="tag">Quality Monitor</span></div>
-          <div class="body" style="overflow:auto;">
-            <table>
-              <thead><tr><th>数据源</th><th>状态</th><th>缺失字段</th><th>重复行</th><th>平均空值率</th></tr></thead>
-              <tbody>
-                {% for row in data_quality %}
-                <tr>
-                  <td>{{ row.source }}</td>
-                  <td>{% if row.ok %}<span class="pill-ok">OK</span>{% else %}<span class="pill-warn">WARN</span>{% endif %}</td>
-                  <td>{{ row.missing_columns or '-' }}</td>
-                  <td>{{ row.duplicate_rows }}</td>
-                  <td>{{ "%.2f"|format(row.avg_null_rate * 100) }}%</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </section>
       </div>
 
       <div class="stack">
@@ -171,85 +137,6 @@
           </div>
         </section>
 
-        <section class="card">
-          <div class="head"><h2>特征层：高维因子概览</h2></div>
-          <div class="body">
-            <div class="kpi" style="grid-template-columns:1fr 1fr;">
-              <div class="k"><p class="l">因子总数</p><p class="n" style="font-size:26px">{{ metadata.features_total }}</p><p class="u">目标约 1800+</p></div>
-              <div class="k"><p class="l">核心入模</p><p class="n" style="font-size:26px">{{ metadata.features_selected }}</p><p class="u">XGBoost筛选</p></div>
-            </div>
-            <div class="panel" style="margin-top:10px">
-              <h3>核心特征样本</h3>
-              <pre id="featureRaw">{{ metadata.selected_feature_sample | tojson(indent=2) }}</pre>
-            </div>
-          </div>
-        </section>
-
-        <section class="card">
-          <div class="head"><h2>模型版本</h2></div>
-          <div class="body"><pre id="versionRaw">{{ metadata.model_versions | tojson(indent=2) }}</pre></div>
-        </section>
-
-        <section class="card">
-          <div class="head"><h2>NLP源健康监控</h2><span class="tag">Text Source Health</span></div>
-          <div class="body" style="overflow:auto;">
-            <label style="display:flex;align-items:center;gap:6px;color:#a4b7de;font-size:12px;margin-bottom:8px;">
-              <input id="onlyAlertToggle" type="checkbox" style="width:auto;accent-color:#f59e0b" onchange="toggleOnlyAlerts()" />
-              仅看告警源（WARN/CRITICAL）
-            </label>
-            <table>
-              <thead><tr><th>索引类型</th><th>质量分</th><th>状态</th><th>覆盖率</th><th>告警</th></tr></thead>
-              <tbody>
-                {% for key in ["policy_text", "sentiment_text"] %}
-                {% set item = dashboard_data.nlp_layer.text_source_health.get(key, {}) %}
-                {% set st = item.get("quality_status", "na") %}
-                <tr class="{% if st == 'good' %}row-good{% elif st == 'warn' %}row-warn{% else %}row-critical{% endif %}">
-                  <td>{{ key }}</td>
-                  <td>{{ item.get("quality_score", 0) }}</td>
-                  <td>
-                    {% if item.get("quality_status") == "good" %}
-                      <span class="pill-ok">GOOD</span>
-                    {% elif item.get("quality_status") == "warn" %}
-                      <span class="pill-mid">WARN</span>
-                    {% else %}
-                      <span class="pill-warn">{{ item.get("quality_status", "NA") | upper }}</span>
-                    {% endif %}
-                  </td>
-                  <td>{{ "%.2f"|format((item.get("coverage_ratio", 0) or 0) * 100) }}%</td>
-                  <td>{{ (item.get("quality_alerts", []) | join("; ")) or "-" }}</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-            <table style="margin-top:10px">
-              <thead><tr><th>源名称</th><th>类型</th><th>质量分</th><th>状态</th><th>抓取/入库</th><th>告警</th></tr></thead>
-              <tbody id="sourceHealthBody">
-                {% for key in ["policy_text", "sentiment_text"] %}
-                  {% set item = dashboard_data.nlp_layer.text_source_health.get(key, {}) %}
-                  {% for src in item.get("sources_detail", []) %}
-                    {% set sst = src.get("quality_status", "na") %}
-                    <tr class="{% if sst == 'good' %}row-good{% elif sst == 'warn' %}row-warn{% else %}row-critical{% endif %}" data-status="{{ sst }}">
-                      <td>{{ src.get("source_name", "-") }}</td>
-                      <td>{{ key }}</td>
-                      <td>{{ src.get("quality_score", 0) }}</td>
-                      <td>
-                        {% if src.get("quality_status") == "good" %}
-                          <span class="pill-ok">GOOD</span>
-                        {% elif src.get("quality_status") == "warn" %}
-                          <span class="pill-mid">WARN</span>
-                        {% else %}
-                          <span class="pill-warn">{{ src.get("quality_status", "NA") | upper }}</span>
-                        {% endif %}
-                      </td>
-                      <td>{{ src.get("fetched", 0) }}/{{ src.get("accepted", 0) }}</td>
-                      <td>{{ (src.get("quality_alerts", []) | join("; ")) or "-" }}</td>
-                    </tr>
-                  {% endfor %}
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </section>
       </div>
     </div>
 
@@ -309,19 +196,6 @@
       setTimeout(() => { e.style.color = '#f5f8ff'; }, 360);
     }
 
-    function toggleOnlyAlerts(){
-      const onlyAlerts = document.getElementById('onlyAlertToggle')?.checked;
-      const rows = document.querySelectorAll('#sourceHealthBody tr[data-status]');
-      rows.forEach((row) => {
-        const st = (row.getAttribute('data-status') || '').toLowerCase();
-        if(!onlyAlerts){
-          row.style.display = '';
-          return;
-        }
-        row.style.display = (st === 'warn' || st === 'critical') ? '' : 'none';
-      });
-    }
-
     async function runPredict(){
       const btn = document.getElementById('predictBtn');
       const csvPath = document.getElementById('csv').value.trim();
@@ -351,8 +225,6 @@
     }
 
     (function initDashboard(){
-      drawLine('policyChart', DASHBOARD.nlp_layer.policy_strength || [], '#22d3ee');
-      drawLine('sentChart', DASHBOARD.nlp_layer.sentiment_score || [], '#8b5cf6');
       drawBars('mapeBar', [
         { label: '日度', value: DASHBOARD.kpis.daily_mape || 0, color: '#4f8cff' },
         { label: '月度', value: DASHBOARD.kpis.monthly_mape || 0, color: '#8b5cf6' },
