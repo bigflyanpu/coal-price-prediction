@@ -21,7 +21,7 @@ const app = createApp({
 
     const fetchDashboard = async () => {
       try {
-        const res = await fetch('/api/dashboard');
+        const res = await fetch('/api/dashboard_full');
         const data = await res.json();
         prediction.value = data.prediction;
         backtestSummary.value = data.backtest_summary;

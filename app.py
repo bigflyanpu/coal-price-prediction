@@ -218,8 +218,8 @@ def build_dashboard_data(
 def index():
     return render_template("index.html")
 
-@app.route("/api/dashboard", methods=["GET"])
-def dashboard_api():
+@app.route("/api/dashboard_full", methods=["GET"])
+def dashboard_full_api():
     state = ensure_state()
     prediction = predict_next(state["base_data"])
     backtest_summary = _load_json(REPORT_DIR / "rolling_backtest_summary.json", {})
