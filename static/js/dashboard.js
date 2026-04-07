@@ -144,6 +144,11 @@ const app = createApp({
       fetchDashboard();
     });
 
+    const formatJSON = (obj) => {
+      if (!obj || Object.keys(obj).length === 0) return '加载中...';
+      return JSON.stringify(obj, null, 2);
+    };
+
     return {
       loading,
       prediction,
@@ -152,7 +157,8 @@ const app = createApp({
       isPredicting,
       msg,
       flashState,
-      runPredict
+      runPredict,
+      formatJSON
     };
   }
 });

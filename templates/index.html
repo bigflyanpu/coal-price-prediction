@@ -81,7 +81,7 @@
             </div>
             <div class="panel">
               <h3>回测与版本信息</h3>
-              <pre>{{ JSON.stringify(backtestSummary, null, 2) }}</pre>
+              <pre>{{ formatJSON(backtestSummary) }}</pre>
             </div>
           </div>
         </section>
@@ -131,6 +131,6 @@
   <style>
     [v-cloak] { display: none; }
   </style>
-  <script src="/static/js/dashboard.js?v=2"></script>
+  <script src="/static/js/dashboard.js?v=3"></script>
 </body>
 </html>
