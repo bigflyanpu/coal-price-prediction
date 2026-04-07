@@ -145,8 +145,12 @@ const app = createApp({
     });
 
     const formatJSON = (obj) => {
-      if (!obj || Object.keys(obj).length === 0) return '加载中...';
-      return JSON.stringify(obj, null, 2);
+      // Vue 的响应式代理对象，在某些情况下 Object.keys() 可能会被拦截或表现异常
+      // 直接使用 JSON.stringify 处理，如果结果是 '{}' 则认为是空
+      if (!obj) return '加载中...';
+      const str = JSON.stringify(obj, null, 2);
+      if (str === '{}' || str === '[]') return '加载中...';
+      return str;
     };
 
     return {
