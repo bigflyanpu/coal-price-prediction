@@ -14,6 +14,7 @@ import pandas as pd
 import torch
 
 from .backtest import rolling_backtest
+from .data_audit import build_data_gap_audit
 from .data_contract import DataContract
 from .features import (
     FeatureConfig,
@@ -84,6 +85,7 @@ class CoalResearchPipeline:
             use_live_text = live_text_enabled == "1"
         ingestor = MultiSourceIngestor(IngestionConfig(use_live_text_sources=use_live_text))
         _, _ = ingestor.run()
+        build_data_gap_audit(start=ingestor.cfg.start, end=ingestor.cfg.end, report_dir="reports", raw_dir=ingestor.cfg.raw_dir)
 
         structured = pd.read_csv("data/raw/structured.csv", parse_dates=["date"])
         policy_raw = pd.read_csv("data/raw/policy_text.csv", parse_dates=["date"])
