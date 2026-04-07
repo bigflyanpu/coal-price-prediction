@@ -20,6 +20,17 @@ const app = createApp({
     let chartInstance = null;
 
     const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+    const fetchJsonWithTimeout = async (url, timeoutMs = 12000) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(url, { signal: controller.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+      } finally {
+        clearTimeout(timer);
+      }
+    };
 
     const fetchDashboard = async () => {
       const endpoints = ['/api/dashboard_full', '/api/dashboard'];
@@ -29,16 +40,22 @@ const app = createApp({
         for (const ep of endpoints) {
           for (let attempt = 1; attempt <= 3; attempt++) {
             try {
-              const res = await fetch(ep + '?t=' + new Date().getTime());
-              if (!res.ok) throw new Error(`HTTP ${res.status}`);
-              const body = await res.json();
+              const body = await fetchJsonWithTimeout(ep + '?t=' + new Date().getTime());
               if (ep === '/api/dashboard_full') {
                 data = body;
               } else {
                 // fallback endpoint response shape
+                let fallbackBacktest = body.backtest_summary || {};
+                if (!fallbackBacktest || JSON.stringify(fallbackBacktest) === '{}') {
+                  try {
+                    fallbackBacktest = await fetchJsonWithTimeout('/api/backtest?t=' + new Date().getTime());
+                  } catch (_) {
+                    // ignore and keep empty fallbackBacktest
+                  }
+                }
                 data = {
                   prediction: body.prediction || {},
-                  backtest_summary: body.backtest_summary || {},
+                  backtest_summary: fallbackBacktest || {},
                   dashboard_data: body || {},
                 };
               }
@@ -182,11 +199,9 @@ const app = createApp({
     });
 
     const formatJSON = (obj) => {
-      // Vue 的响应式代理对象，在某些情况下 Object.keys() 可能会被拦截或表现异常
-      // 直接使用 JSON.stringify 处理，如果结果是 '{}' 则认为是空
-      if (!obj) return '加载中...';
+      if (!obj) return loading.value ? '加载中...' : '暂无数据';
       const str = JSON.stringify(obj, null, 2);
-      if (str === '{}' || str === '[]') return '加载中...';
+      if (str === '{}' || str === '[]') return loading.value ? '加载中...' : '暂无数据';
       return str;
     };
 
