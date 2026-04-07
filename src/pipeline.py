@@ -35,6 +35,7 @@ from .models import (
     train_best_yearly_model,
 )
 from .nlp_index import NLPConfig, PolicySentimentIndexer
+from .reporting import build_paper_experiment_tables
 
 
 @dataclass
@@ -323,6 +324,7 @@ class CoalResearchPipeline:
             json.dumps(online_metrics, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+        build_paper_experiment_tables("reports")
         self._log("stage F: artifacts and reports saved")
 
         return TrainOutput(online_metrics=online_metrics, backtest_summary=backtest.summary_metrics, metadata=metadata)
