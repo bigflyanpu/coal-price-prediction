@@ -3,124 +3,85 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>煤炭预测答辩仪表盘</title>
-  <style>
-    :root {
-      --bg: #070d1d;
-      --panel: #111a32;
-      --panel2: #162240;
-      --line: #2b3e70;
-      --text: #edf3ff;
-      --muted: #9fb1d8;
-      --blue: #4f8cff;
-      --cyan: #22d3ee;
-      --green: #22c55e;
-      --purple: #8b5cf6;
-      --amber: #f59e0b;
-    }
-    *{box-sizing:border-box}
-    body{margin:0;color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;background:
-      radial-gradient(circle at 10% -20%, rgba(79,140,255,.25), transparent 35%),
-      radial-gradient(circle at 90% -10%, rgba(34,211,238,.18), transparent 30%),
-      var(--bg);
-    }
-    .wrap{width:min(1280px,94vw);margin:20px auto 36px;}
-    .hero{padding:22px 24px;border:1px solid var(--line);border-radius:18px;background:linear-gradient(145deg,rgba(18,28,53,.95),rgba(22,35,64,.92));box-shadow:0 12px 28px rgba(0,0,0,.35)}
-    .hero h1{margin:0;font-size:clamp(28px,4vw,42px);font-weight:800;background:linear-gradient(90deg,#fff,#9fb9ff 55%,#7ce9ff);-webkit-background-clip:text;background-clip:text;color:transparent}
-    .hero p{margin:8px 0 0;color:var(--muted);font-size:14px}
-    .badge{display:inline-flex;align-items:center;gap:8px;margin-top:12px;padding:6px 12px;border-radius:999px;border:1px solid rgba(34,197,94,.35);background:rgba(34,197,94,.14);font-size:12px;color:#95f2b8;font-weight:700}
-    .dot{width:8px;height:8px;border-radius:50%;background:#3ef27b;box-shadow:0 0 12px #3ef27b;animation:pulse 1.4s ease infinite}
-    @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.8)}}
-
-    .grid{margin-top:14px;display:grid;grid-template-columns:2fr 1fr;gap:14px}
-    .stack{display:grid;gap:14px}
-    .card{border:1px solid var(--line);border-radius:14px;background:linear-gradient(165deg,rgba(16,25,46,.92),rgba(13,21,40,.95));overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.28)}
-    .head{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid rgba(46,66,112,.55);background:rgba(13,22,43,.65)}
-    .head h2{margin:0;font-size:15px}
-    .tag{font-size:11px;color:#9ec2ff;border:1px solid rgba(79,140,255,.35);padding:3px 8px;border-radius:999px;background:rgba(79,140,255,.14)}
-    .body{padding:12px 14px}
-
-    .kpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
-    .k{border:1px solid rgba(76,98,150,.65);border-radius:11px;padding:10px;background:linear-gradient(180deg,rgba(22,35,64,.92),rgba(17,28,52,.94))}
-    .k p{margin:0}
-    .k .n{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums}
-    .k .l{color:#b8c8eb;font-size:12px;margin-bottom:5px}
-    .k .u{color:#8ea2cf;font-size:11px}
-
-    .cols2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .panel{border:1px solid rgba(51,73,121,.65);border-radius:10px;padding:10px;background:#0d172d}
-    .panel h3{margin:0 0 8px;font-size:13px;color:#c9d7f6}
-
-    .chart{height:170px;background:#0a1326;border:1px solid #253964;border-radius:10px;position:relative;padding:8px}
-    .chart svg{width:100%;height:100%}
-    .legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:11px;color:#93a8d8}
-    .lg{display:inline-flex;align-items:center;gap:5px}
-    .sw{width:10px;height:10px;border-radius:2px}
-
-    table{width:100%;border-collapse:collapse}
-    th,td{padding:8px 6px;border-bottom:1px solid rgba(54,74,120,.55);font-size:12px;text-align:left}
-    th{color:#9fb3de}
-    td{color:#dbe6ff}
-
-    pre{margin:0;background:#0a1326;border:1px solid #253964;border-radius:10px;padding:10px;color:#c9d7f6;font-size:12px;max-height:210px;overflow:auto}
-
-    input{width:100%;border-radius:10px;border:1px solid #2b4374;background:#0a1326;color:#f2f6ff;padding:10px 11px;font-size:13px;outline:none}
-    input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(79,140,255,.2)}
-    button{width:100%;margin-top:8px;border:0;border-radius:10px;padding:10px 11px;background:linear-gradient(120deg,#2c76ff,#1db9ff);font-weight:700;color:#fff;cursor:pointer}
-    .msg{display:none;margin-top:8px;padding:8px;border-radius:8px;font-size:12px}
-    .ok{display:block;background:rgba(34,197,94,.16);border:1px solid rgba(34,197,94,.35);color:#93f5ba}
-    .err{display:block;background:rgba(251,113,133,.16);border:1px solid rgba(251,113,133,.35);color:#ffc7d1}
-
-    .pill-ok{padding:2px 8px;border-radius:999px;font-size:11px;background:rgba(34,197,94,.16);border:1px solid rgba(34,197,94,.35);color:#92f8b8}
-    .pill-warn{padding:2px 8px;border-radius:999px;font-size:11px;background:rgba(251,113,133,.16);border:1px solid rgba(251,113,133,.35);color:#ffc3ce}
-    .pill-mid{padding:2px 8px;border-radius:999px;font-size:11px;background:rgba(245,158,11,.16);border:1px solid rgba(245,158,11,.38);color:#ffd18a}
-    .row-good{background:rgba(34,197,94,.08)}
-    .row-warn{background:rgba(245,158,11,.08)}
-    .row-critical{background:rgba(251,113,133,.12)}
-
-    .footer{text-align:center;margin-top:14px;color:#7f95c3;font-size:12px}
-
-    @media (max-width:1040px){.grid{grid-template-columns:1fr}.kpi{grid-template-columns:repeat(2,minmax(0,1fr))}}
-    @media (max-width:640px){.kpi{grid-template-columns:1fr}.cols2{grid-template-columns:1fr}}
-  </style>
+  <title>煤炭价格预测系统 - 南京大学</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/dashboard.css">
+  <!-- Vue 3 -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <!-- ECharts -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 </head>
 <body>
-  <div class="wrap">
+  <div id="app" class="wrap" v-cloak>
+    {% raw %}
     <section class="hero">
-      <h1>煤炭价格预测在线系统</h1>
-      <p>仅保留核心使用模块：预测结果、回测摘要、在线调用。</p>
-      <div class="badge"><span class="dot"></span>系统在线 · 自动同步最新模型</div>
+      <h1>煤炭价格预测系统</h1>
+      <p>计及双轨定价体系的多尺度大宗商品价格预测研究</p>
+      <div class="badge"><span class="dot"></span>模型在线 · 自动同步</div>
     </section>
 
-    <div class="grid">
+    <!-- Loading State -->
+    <div v-if="loading" class="loading-container">
+      <svg class="spinner" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="2" x2="12" y2="6"></line>
+        <line x1="12" y1="18" x2="12" y2="22"></line>
+        <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+        <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+        <line x1="2" y1="12" x2="6" y2="12"></line>
+        <line x1="18" y1="12" x2="22" y2="12"></line>
+        <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
+        <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+      </svg>
+      <p>正在加载模型数据...</p>
+    </div>
+
+    <!-- Dashboard Content -->
+    <div v-else class="grid">
       <div class="stack">
         <section class="card">
-          <div class="head"><h2>模型层：多尺度预测输出</h2><span class="tag">Daily / Monthly / Yearly</span></div>
+          <div class="head">
+            <h2>模型层：多尺度预测输出</h2>
+            <span class="tag">Daily / Monthly / Yearly</span>
+          </div>
           <div class="body">
             <div class="kpi">
-              <div class="k"><p class="l">次日市场价</p><p class="n" id="d1">{{ prediction.next_day_market_price }}</p><p class="u">元/吨</p></div>
-              <div class="k"><p class="l">次日长协价</p><p class="n" id="d2">{{ prediction.next_day_contract_price }}</p><p class="u">元/吨</p></div>
-              <div class="k"><p class="l">次月市场价</p><p class="n" id="m1">{{ prediction.next_month_market_price }}</p><p class="u">元/吨</p></div>
-              <div class="k"><p class="l">次年市场价</p><p class="n" id="y1">{{ prediction.next_year_market_price }}</p><p class="u">元/吨</p></div>
+              <div class="k">
+                <p class="l">次日市场价</p>
+                <p class="n" :class="{ flash: flashState.d1 }">{{ prediction.next_day_market_price }}</p>
+                <p class="u">CNY / 吨</p>
+              </div>
+              <div class="k">
+                <p class="l">次日长协价</p>
+                <p class="n" :class="{ flash: flashState.d2 }">{{ prediction.next_day_contract_price }}</p>
+                <p class="u">CNY / 吨</p>
+              </div>
+              <div class="k">
+                <p class="l">次月市场价</p>
+                <p class="n" :class="{ flash: flashState.m1 }">{{ prediction.next_month_market_price }}</p>
+                <p class="u">CNY / 吨</p>
+              </div>
+              <div class="k">
+                <p class="l">次年市场价</p>
+                <p class="n" :class="{ flash: flashState.y1 }">{{ prediction.next_year_market_price }}</p>
+                <p class="u">CNY / 吨</p>
+              </div>
             </div>
           </div>
         </section>
 
         <section class="card">
-          <div class="head"><h2>验证层：滚动回测摘要</h2><span class="tag">2018-2024 OOS</span></div>
+          <div class="head">
+            <h2>验证层：滚动回测摘要</h2>
+            <span class="tag">2018-2024 OOS</span>
+          </div>
           <div class="body cols2">
             <div class="panel">
               <h3>分尺度 MAPE（%）</h3>
-              <div class="chart"><svg id="mapeBar" viewBox="0 0 1000 260" preserveAspectRatio="none"></svg></div>
-              <div class="legend">
-                <span class="lg"><span class="sw" style="background:#4f8cff"></span>日度市场</span>
-                <span class="lg"><span class="sw" style="background:#8b5cf6"></span>月度市场</span>
-                <span class="lg"><span class="sw" style="background:#22c55e"></span>年度市场</span>
-              </div>
+              <div class="chart-container" id="mapeChart"></div>
             </div>
             <div class="panel">
               <h3>回测与版本信息</h3>
-              <pre id="backtestRaw">{{ backtest_summary | tojson(indent=2) }}</pre>
+              <pre>{{ JSON.stringify(backtestSummary, null, 2) }}</pre>
             </div>
           </div>
         </section>
@@ -128,109 +89,48 @@
 
       <div class="stack">
         <section class="card">
-          <div class="head"><h2>系统层：在线预测</h2></div>
+          <div class="head">
+            <h2>系统层：在线预测</h2>
+          </div>
           <div class="body">
-            <label style="display:block;color:#a4b7de;font-size:12px;margin-bottom:6px">CSV 绝对路径（服务器可访问）</label>
-            <input id="csv" placeholder="例如：/app/data/curated/daily.csv" />
-            <button id="predictBtn" onclick="runPredict()">运行预测</button>
-            <div id="msg" class="msg"></div>
+            <div class="input-group">
+              <label for="csv">CSV 绝对路径（服务器可访问）</label>
+              <input id="csv" v-model="csvPath" placeholder="例如：/app/data/curated/daily.csv" autocomplete="off" @keyup.enter="runPredict" />
+            </div>
+            <button :disabled="isPredicting" @click="runPredict">
+              <svg v-if="isPredicting" class="spinner" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="2" x2="12" y2="6"></line>
+                <line x1="12" y1="18" x2="12" y2="22"></line>
+                <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+                <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+                <line x1="2" y1="12" x2="6" y2="12"></line>
+                <line x1="18" y1="12" x2="22" y2="12"></line>
+                <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
+                <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+              </svg>
+              <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+              {{ isPredicting ? '计算中...' : '运行预测' }}
+            </button>
+            
+            <div v-if="msg" class="msg" :class="msg.type">
+              {{ msg.text }}
+            </div>
           </div>
         </section>
-
       </div>
     </div>
 
-    <div class="footer">南京大学 · 计及双轨定价体系的多尺度大宗商品价格预测研究</div>
+    <div class="footer">
+      &copy; 2026 南京大学 · 计及双轨定价体系的多尺度大宗商品价格预测研究
+    </div>
+    {% endraw %}
   </div>
 
-  <script>
-    const DASHBOARD = {{ dashboard_data | tojson }};
-
-    function setMsg(type, text){
-      const el = document.getElementById('msg');
-      el.className = 'msg ' + (type === 'ok' ? 'ok' : 'err');
-      el.textContent = text;
-    }
-
-    function drawLine(svgId, values, color){
-      const svg = document.getElementById(svgId);
-      if(!svg || !values || !values.length){ return; }
-      const w = 1000, h = 260, p = 18;
-      const min = Math.min(...values), max = Math.max(...values);
-      const span = Math.max(max - min, 1e-6);
-      const step = (w - p * 2) / Math.max(values.length - 1, 1);
-      let d = '';
-      values.forEach((v, i) => {
-        const x = p + i * step;
-        const y = h - p - ((v - min) / span) * (h - p * 2);
-        d += (i === 0 ? 'M' : 'L') + x.toFixed(2) + ' ' + y.toFixed(2) + ' ';
-      });
-      svg.innerHTML = `
-        <rect x="0" y="0" width="${w}" height="${h}" fill="none"></rect>
-        <path d="${d}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round"></path>
-      `;
-    }
-
-    function drawBars(svgId, bars){
-      const svg = document.getElementById(svgId);
-      if(!svg){ return; }
-      const w = 1000, h = 260, p = 30;
-      const max = Math.max(...bars.map(b => b.value), 1);
-      const col = (w - p * 2) / bars.length;
-      let content = '';
-      bars.forEach((b, i) => {
-        const bh = (b.value / max) * (h - p * 2);
-        const x = p + i * col + col * 0.16;
-        const y = h - p - bh;
-        const bw = col * 0.68;
-        content += `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="8" fill="${b.color}"></rect>`;
-        content += `<text x="${x + bw/2}" y="${h-8}" fill="#9fb1d8" font-size="16" text-anchor="middle">${b.label}</text>`;
-        content += `<text x="${x + bw/2}" y="${y-8}" fill="#edf3ff" font-size="16" text-anchor="middle">${b.value.toFixed(2)}</text>`;
-      });
-      svg.innerHTML = content;
-    }
-
-    function flash(id){
-      const e = document.getElementById(id);
-      e.style.color = '#7cb0ff';
-      setTimeout(() => { e.style.color = '#f5f8ff'; }, 360);
-    }
-
-    async function runPredict(){
-      const btn = document.getElementById('predictBtn');
-      const csvPath = document.getElementById('csv').value.trim();
-      btn.disabled = true;
-      btn.textContent = '计算中...';
-      try{
-        const res = await fetch('/api/predict', {
-          method: 'POST',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ csv_path: csvPath || undefined }),
-        });
-        const data = await res.json();
-        if(!res.ok){ throw new Error(data.error || '预测失败'); }
-
-        document.getElementById('d1').textContent = data.next_day_market_price;
-        document.getElementById('d2').textContent = data.next_day_contract_price;
-        document.getElementById('m1').textContent = data.next_month_market_price;
-        document.getElementById('y1').textContent = data.next_year_market_price;
-        ['d1','d2','m1','y1'].forEach(flash);
-        setMsg('ok', '预测成功，结果已更新。');
-      }catch(err){
-        setMsg('err', err.message || '请求失败');
-      }finally{
-        btn.disabled = false;
-        btn.textContent = '运行预测';
-      }
-    }
-
-    (function initDashboard(){
-      drawBars('mapeBar', [
-        { label: '日度', value: DASHBOARD.kpis.daily_mape || 0, color: '#4f8cff' },
-        { label: '月度', value: DASHBOARD.kpis.monthly_mape || 0, color: '#8b5cf6' },
-        { label: '年度', value: DASHBOARD.kpis.yearly_mape || 0, color: '#22c55e' },
-      ]);
-    })();
-  </script>
+  <style>
+    [v-cloak] { display: none; }
+  </style>
+  <script src="/static/js/dashboard.js"></script>
 </body>
 </html>

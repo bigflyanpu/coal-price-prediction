@@ -216,6 +216,10 @@ def build_dashboard_data(
 
 @app.route("/")
 def index():
+    return render_template("index.html")
+
+@app.route("/api/dashboard", methods=["GET"])
+def dashboard_api():
     state = ensure_state()
     prediction = predict_next(state["base_data"])
     backtest_summary = _load_json(REPORT_DIR / "rolling_backtest_summary.json", {})
@@ -234,14 +238,13 @@ def index():
         text_source_health=text_source_health,
     )
 
-    return render_template(
-        "index.html",
-        prediction=prediction,
-        backtest_summary=backtest_summary,
-        metadata=metadata,
-        data_quality=data_quality,
-        dashboard_data=dashboard_data,
-    )
+    return jsonify({
+        "prediction": prediction,
+        "backtest_summary": backtest_summary,
+        "metadata": metadata,
+        "data_quality": data_quality,
+        "dashboard_data": dashboard_data,
+    })
 
 
 @app.route("/api/predict", methods=["POST"])
