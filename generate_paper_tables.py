@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from src.reporting import build_paper_experiment_tables
+from src.reporting import build_paper_assets
 
 
 if __name__ == "__main__":
-    meta = build_paper_experiment_tables("reports")
-    print("论文实验表格已生成")
+    meta = build_paper_assets("reports")
+    print("论文表格与图表资产已生成")
     print(meta)
