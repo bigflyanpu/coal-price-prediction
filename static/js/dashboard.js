@@ -320,8 +320,7 @@ const app = createApp({
       renderMainChart();
       renderGaugeChart();
       renderDailyChart();
-      renderMonthlyChart();
-      renderYearlyChart();
+      // Monthly/Yearly charts live in hidden tabs; init lazily when tab is visible.
       renderRadarChart();
       renderHeatChart();
     };
@@ -329,9 +328,18 @@ const app = createApp({
     const switchTab = (name) => {
       tab.value = name;
       nextTick(() => {
-        if (name === "daily") renderDailyChart();
-        if (name === "monthly") renderMonthlyChart();
-        if (name === "yearly") renderYearlyChart();
+        if (name === "daily") {
+          renderDailyChart();
+          charts.daily && charts.daily.resize();
+        }
+        if (name === "monthly") {
+          renderMonthlyChart();
+          charts.monthly && charts.monthly.resize();
+        }
+        if (name === "yearly") {
+          renderYearlyChart();
+          charts.yearly && charts.yearly.resize();
+        }
       });
     };
 
@@ -373,7 +381,13 @@ const app = createApp({
           next_year_market_price: safeNum(data.next_year_market_price),
         };
         msg.value = { type: "ok", text: "预测成功，结果已更新。" };
-        renderYearlyChart();
+        // Keep yearly chart in sync when prediction updates
+        if (tab.value === "yearly") {
+          nextTick(() => {
+            renderYearlyChart();
+            charts.yearly && charts.yearly.resize();
+          });
+        }
       } catch (e) {
         msg.value = { type: "err", text: e.message || "请求失败" };
       } finally {

@@ -122,10 +122,35 @@ def _daily_last_vector(df: pd.DataFrame, feature_cols: list[str]) -> np.ndarray:
     return aligned[feature_cols].iloc[[-1]].to_numpy()
 
 
+def _stabilize_daily_prediction(raw_pred: float, df: pd.DataFrame) -> float:
+    """
+    Keep next-day prediction in a reasonable neighborhood of latest spot price.
+    This avoids unrealistic one-day jumps when source distribution shifts.
+    """
+    if "market_price" not in df.columns or len(df) < 5:
+        return float(raw_pred)
+
+    market = pd.to_numeric(df["market_price"], errors="coerce").dropna()
+    if market.empty:
+        return float(raw_pred)
+
+    last_price = float(market.iloc[-1])
+    lookback = market.tail(30)
+    diff_std = float(lookback.diff().std(skipna=True) or 0.0)
+    pct_std = float(lookback.pct_change().std(skipna=True) or 0.0)
+
+    # Volatility-based daily move cap + a minimum absolute band.
+    move_cap_abs = max(10.0, diff_std * 2.5, abs(last_price) * max(0.015, pct_std * 2.5))
+    lower = last_price - move_cap_abs
+    upper = last_price + move_cap_abs
+    return float(np.clip(raw_pred, lower, upper))
+
+
 def predict_next(df: pd.DataFrame) -> dict:
     state = ensure_state()
     daily_last_x = _daily_last_vector(df, state["daily_cols"])
-    day_pred = float(predict_daily_model(state["daily_bundle"], daily_last_x).reshape(-1)[0])
+    day_pred_raw = float(predict_daily_model(state["daily_bundle"], daily_last_x).reshape(-1)[0])
+    day_pred = _stabilize_daily_prediction(day_pred_raw, df)
 
     policy_strength = float(df.get("policy_strength", pd.Series([0])).iloc[-1]) if len(df) else 0.0
     contract_pred = float(state["mapper"].predict(np.array([day_pred]), np.array([policy_strength]))[0])
