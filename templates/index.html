@@ -3,134 +3,120 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>煤炭价格预测系统 - 南京大学</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/dashboard.css?v=2">
-  <!-- Vue 3 -->
+  <title>煤炭双轨定价预测驾驶舱</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/dashboard.css?v=6">
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-  <!-- ECharts -->
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 </head>
 <body>
-  <div id="app" class="wrap" v-cloak>
-    {% raw %}
-    <section class="hero">
-      <h1>煤炭价格预测系统</h1>
-      <p>计及双轨定价体系的多尺度大宗商品价格预测研究</p>
-      <div class="badge"><span class="dot"></span>模型在线 · 自动同步</div>
-    </section>
-
-    <!-- Loading State -->
-    <div v-if="loading" class="loading-container">
-      <svg class="spinner" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="12" y1="2" x2="12" y2="6"></line>
-        <line x1="12" y1="18" x2="12" y2="22"></line>
-        <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
-        <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
-        <line x1="2" y1="12" x2="6" y2="12"></line>
-        <line x1="18" y1="12" x2="22" y2="12"></line>
-        <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
-        <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
-      </svg>
-      <p>正在加载模型数据...</p>
-    </div>
-
-    <!-- Dashboard Content -->
-    <div v-else class="grid">
-      <div class="stack">
-        <section class="card">
-          <div class="head">
-            <h2>模型层：多尺度预测输出</h2>
-            <span class="tag">Daily / Monthly / Yearly</span>
-          </div>
-          <div class="body">
-            <div class="kpi">
-              <div class="k">
-                <p class="l">次日市场价</p>
-                <p class="n" :class="{ flash: flashState.d1 }">{{ prediction.next_day_market_price }}</p>
-                <p class="u">CNY / 吨</p>
-              </div>
-              <div class="k">
-                <p class="l">次日长协价</p>
-                <p class="n" :class="{ flash: flashState.d2 }">{{ prediction.next_day_contract_price }}</p>
-                <p class="u">CNY / 吨</p>
-              </div>
-              <div class="k">
-                <p class="l">次月市场价</p>
-                <p class="n" :class="{ flash: flashState.m1 }">{{ prediction.next_month_market_price }}</p>
-                <p class="u">CNY / 吨</p>
-              </div>
-              <div class="k">
-                <p class="l">次年市场价</p>
-                <p class="n" :class="{ flash: flashState.y1 }">{{ prediction.next_year_market_price }}</p>
-                <p class="u">CNY / 吨</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="card">
-          <div class="head">
-            <h2>验证层：滚动回测摘要</h2>
-            <span class="tag">2018-2024 OOS</span>
-          </div>
-          <div class="body cols2">
-            <div class="panel">
-              <h3>分尺度 MAPE（%）</h3>
-              <div class="chart-container" id="mapeChart"></div>
-            </div>
-            <div class="panel">
-              <h3>回测与版本信息</h3>
-              <pre>{{ formatJSON(backtestSummary) }}</pre>
-            </div>
-          </div>
-        </section>
+  {% raw %}
+  <div id="app" class="page" v-cloak>
+    <header class="topbar">
+      <div>
+        <h1>双轨定价多尺度预测系统</h1>
+        <p>价差预警 / 事件打桩 / 三位小数量化展示</p>
       </div>
+      <div class="top-badge">{{ nowText }}</div>
+    </header>
 
-      <div class="stack">
-        <section class="card">
-          <div class="head">
-            <h2>系统层：在线预测</h2>
-          </div>
-          <div class="body">
-            <div class="input-group">
-              <label for="csv">CSV 绝对路径（服务器可访问）</label>
-              <input id="csv" v-model="csvPath" placeholder="例如：/app/data/curated/daily.csv" autocomplete="off" @keyup.enter="runPredict" />
-            </div>
-            <button :disabled="isPredicting" @click="runPredict">
-              <svg v-if="isPredicting" class="spinner" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="12" y1="2" x2="12" y2="6"></line>
-                <line x1="12" y1="18" x2="12" y2="22"></line>
-                <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
-                <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
-                <line x1="2" y1="12" x2="6" y2="12"></line>
-                <line x1="18" y1="12" x2="22" y2="12"></line>
-                <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
-                <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
-              </svg>
-              <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polygon points="5 3 19 12 5 21 5 3"></polygon>
-              </svg>
-              {{ isPredicting ? '计算中...' : '运行预测' }}
-            </button>
-            
-            <div v-if="msg" class="msg" :class="msg.type">
-              {{ msg.text }}
-            </div>
+    <div v-if="loading" class="loading">模型数据加载中...</div>
+
+    <template v-else>
+      <section class="kpi-grid">
+        <article class="kpi">
+          <p>现货市场价</p>
+          <h3>{{ fmt(marketLatest) }}</h3>
+          <span>元/吨</span>
+        </article>
+        <article class="kpi">
+          <p>长协基准价</p>
+          <h3>{{ fmt(contractLatest) }}</h3>
+          <span>元/吨</span>
+        </article>
+        <article class="kpi warning" :class="{active: spreadWarnLevel>0}">
+          <p>双轨价差</p>
+          <h3>{{ fmt(spreadAbs) }}</h3>
+          <span v-if="spreadWarnLevel===2">红色预警</span>
+          <span v-else-if="spreadWarnLevel===1">橙色关注</span>
+          <span v-else>正常区间</span>
+        </article>
+        <article class="kpi">
+          <p>预测次日市场价</p>
+          <h3>{{ fmt(prediction.next_day_market_price) }}</h3>
+          <span>元/吨</span>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>模块一：全景驾驶舱</h2>
+        </div>
+        <div id="mainChart" class="chart-large"></div>
+      </section>
+
+      <section class="three-col">
+        <section class="panel">
+          <div class="panel-head"><h2>模型性能仪表盘</h2></div>
+          <div id="gaugeChart" class="chart-mid"></div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><h2>回测与版本信息</h2></div>
+          <pre>{{ backtestText }}</pre>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><h2>Excel 数据质量</h2></div>
+          <div class="quality">
+            <div><b>数据点</b> {{ excelOverlay.points }}</div>
+            <div><b>原始行</b> {{ excelOverlay.raw_rows }}</div>
+            <div><b>空值率</b> {{ (excelOverlay.null_ratio * 100).toFixed(2) }}%</div>
+            <div><b>状态</b> <span :class="excelOverlay.null_ratio>0.2?'bad':'good'">{{ excelOverlay.null_ratio>0.2?'需关注':'可用' }}</span></div>
           </div>
         </section>
-      </div>
-    </div>
+      </section>
 
-    <div class="footer">
-      &copy; 2026 南京大学 · 计及双轨定价体系的多尺度大宗商品价格预测研究
-    </div>
-    {% endraw %}
+      <section class="panel">
+        <div class="panel-head">
+          <h2>模块二：多尺度预测引擎</h2>
+          <div class="tabs">
+            <button :class="{on:tab==='daily'}" @click="switchTab('daily')">日度</button>
+            <button :class="{on:tab==='monthly'}" @click="switchTab('monthly')">月度</button>
+            <button :class="{on:tab==='yearly'}" @click="switchTab('yearly')">年度</button>
+          </div>
+        </div>
+        <div v-show="tab==='daily'" id="dailyChart" class="chart-mid"></div>
+        <div v-show="tab==='monthly'" id="monthlyChart" class="chart-mid"></div>
+        <div v-show="tab==='yearly'" class="yearly-wrap">
+          <div id="yearlyChart" class="chart-mid"></div>
+          <div class="slider-box">
+            <label>政策调控强度模拟：{{ policyDelta }}%</label>
+            <input type="range" min="-50" max="50" step="5" v-model="policyDelta" @input="renderYearlyChart" />
+          </div>
+        </div>
+      </section>
+
+      <section class="two-col">
+        <section class="panel">
+          <div class="panel-head"><h2>模块三：政策维度雷达图</h2></div>
+          <div id="radarChart" class="chart-mid"></div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><h2>舆情热力趋势</h2></div>
+          <div id="heatChart" class="chart-mid"></div>
+        </section>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>在线预测</h2></div>
+        <div class="predict-row">
+          <input v-model="csvPath" placeholder="CSV 绝对路径（可空，空则使用当前模型基准数据）" />
+          <button @click="runPredict" :disabled="isPredicting">{{ isPredicting ? '计算中...' : '运行预测' }}</button>
+        </div>
+        <div v-if="msg" class="msg" :class="msg.type">{{ msg.text }}</div>
+      </section>
+    </template>
   </div>
-
-  <style>
-    [v-cloak] { display: none; }
-  </style>
-  <script src="/static/js/dashboard.js?v=4"></script>
+  {% endraw %}
+  <script src="/static/js/dashboard.js?v=6"></script>
 </body>
 </html>

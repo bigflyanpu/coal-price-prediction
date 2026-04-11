@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 import warnings
 
@@ -214,6 +215,90 @@ def build_dashboard_data(
     }
 
 
+def _parse_excel_date(value):
+    if pd.isna(value):
+        return pd.NaT
+    if isinstance(value, (pd.Timestamp, np.datetime64)):
+        return pd.to_datetime(value, errors="coerce")
+    if isinstance(value, (int, float)):
+        # Excel serial date heuristic
+        if 20000 <= float(value) <= 60000:
+            return pd.to_datetime("1899-12-30") + pd.to_timedelta(float(value), unit="D")
+        return pd.NaT
+    text = str(value).strip()
+    if not text:
+        return pd.NaT
+    if re.match(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}$", text):
+        return pd.to_datetime(text, errors="coerce")
+    return pd.NaT
+
+
+def _load_excel_overlay(path: Path) -> dict:
+    if not path.exists():
+        return {"timeline": [], "price": [], "null_ratio": 0.0, "points": 0}
+
+    try:
+        raw = pd.read_excel(path, sheet_name=0, header=None)
+    except Exception:
+        return {"timeline": [], "price": [], "null_ratio": 0.0, "points": 0}
+
+    if raw.empty:
+        return {"timeline": [], "price": [], "null_ratio": 0.0, "points": 0}
+
+    scan_cols = list(raw.columns[: min(10, len(raw.columns))])
+    best_date_col = None
+    best_date_count = -1
+    parsed_dates_cache = {}
+    for c in scan_cols:
+        parsed = raw[c].map(_parse_excel_date)
+        valid = int(parsed.notna().sum())
+        parsed_dates_cache[c] = parsed
+        if valid > best_date_count:
+            best_date_count = valid
+            best_date_col = c
+
+    if best_date_col is None or best_date_count < 200:
+        return {"timeline": [], "price": [], "null_ratio": 0.0, "points": 0}
+
+    dates = parsed_dates_cache[best_date_col]
+
+    best_num_col = None
+    best_num_score = -1
+    for c in raw.columns:
+        if c == best_date_col:
+            continue
+        nums = pd.to_numeric(raw[c], errors="coerce")
+        valid = int(nums.notna().sum())
+        if valid < 200:
+            continue
+        median = float(nums.median(skipna=True)) if valid else 0.0
+        in_price_band = 1 if 80 <= median <= 2000 else 0
+        score = valid + in_price_band * 500
+        if score > best_num_score:
+            best_num_score = score
+            best_num_col = c
+
+    if best_num_col is None:
+        return {"timeline": [], "price": [], "null_ratio": 0.0, "points": 0}
+
+    values = pd.to_numeric(raw[best_num_col], errors="coerce")
+    frame = pd.DataFrame({"date": dates, "price": values})
+    total_rows = len(frame)
+    frame = frame.dropna(subset=["date"]).sort_values("date")
+    frame = frame.groupby("date", as_index=False).last()
+    null_ratio = float(frame["price"].isna().mean()) if len(frame) else 0.0
+    frame["price"] = frame["price"].interpolate(limit_direction="both")
+    frame = frame.dropna(subset=["price"]).tail(240)
+
+    return {
+        "timeline": [d.strftime("%Y-%m-%d") for d in frame["date"]],
+        "price": [round(float(v), 3) for v in frame["price"]],
+        "null_ratio": round(null_ratio, 4),
+        "points": int(len(frame)),
+        "raw_rows": int(total_rows),
+    }
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -238,12 +323,15 @@ def dashboard_full_api():
         text_source_health=text_source_health,
     )
 
+    excel_overlay = _load_excel_overlay(BASE / "预测数据.xlsx")
+
     return jsonify({
         "prediction": prediction,
         "backtest_summary": backtest_summary,
         "metadata": metadata,
         "data_quality": data_quality,
         "dashboard_data": dashboard_data,
+        "excel_overlay": excel_overlay,
     })
 
 
