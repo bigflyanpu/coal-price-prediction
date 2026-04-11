@@ -299,6 +299,20 @@ def _load_excel_overlay(path: Path) -> dict:
     }
 
 
+def _sanitize_json_payload(value):
+    if isinstance(value, dict):
+        return {k: _sanitize_json_payload(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_json_payload(v) for v in value]
+    if isinstance(value, tuple):
+        return [_sanitize_json_payload(v) for v in value]
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, float) and (np.isnan(value) or np.isinf(value)):
+        return None
+    return value
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -325,14 +339,15 @@ def dashboard_full_api():
 
     excel_overlay = _load_excel_overlay(BASE / "预测数据.xlsx")
 
-    return jsonify({
+    payload = {
         "prediction": prediction,
         "backtest_summary": backtest_summary,
         "metadata": metadata,
         "data_quality": data_quality,
         "dashboard_data": dashboard_data,
         "excel_overlay": excel_overlay,
-    })
+    }
+    return jsonify(_sanitize_json_payload(payload))
 
 
 @app.route("/api/predict", methods=["POST"])
