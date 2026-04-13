@@ -1,0 +1,28 @@
+version: 1
+owner: data-engineering
+entities:
+  daily:
+    required:
+      - date
+      - market_price
+      - contract_price
+      - port_inventory
+      - rail_transport
+      - power_consumption
+      - import_volume
+      - coal_output
+      - industrial_value_added
+  nlp:
+    required:
+      - date
+      - policy_strength
+      - sentiment_score
+  weather:
+    required:
+      - date
+      - temperature
+      - precipitation
+      - wind_speed
+quality:
+  allow_nan_ratio_default: 0.05
+  timestamp_key: date

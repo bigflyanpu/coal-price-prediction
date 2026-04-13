@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EventMarkers",
+  "type": "object",
+  "required": ["date", "event_type", "impact_score"],
+  "properties": {
+    "date": {"type": "string", "format": "date"},
+    "event_type": {"type": "string"},
+    "impact_score": {"type": "number"},
+    "sentiment_score": {"type": ["number", "null"]},
+    "source_url": {"type": ["string", "null"]}
+  }
+}

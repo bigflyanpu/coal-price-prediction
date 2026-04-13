@@ -7,6 +7,9 @@ __pycache__/
 /models/
 /data/
 /reports/
+/core/models/
+/core/data/
+/core/reports/
 
 # Logs and environment
 *.log

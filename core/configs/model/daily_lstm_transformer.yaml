@@ -1,0 +1,6 @@
+name: daily_lstm_transformer
+framework: pytorch
+params:
+  epochs: 18
+  learning_rate: 0.0008
+  batch_size: 64

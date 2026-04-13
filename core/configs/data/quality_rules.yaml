@@ -1,0 +1,8 @@
+version: 1
+rules:
+  duplicate_max: 0
+  missing_columns: fail
+  nan_ratio_warn: 0.05
+  nan_ratio_fail: 0.20
+  outlier_method: iqr
+  outlier_warn_ratio: 0.03

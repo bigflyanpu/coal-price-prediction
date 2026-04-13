@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PredictionOutput",
+  "type": "object",
+  "required": [
+    "next_day_market_price",
+    "next_day_contract_price",
+    "next_month_market_price",
+    "next_year_market_price"
+  ],
+  "properties": {
+    "next_day_market_price": {"type": "number"},
+    "next_day_contract_price": {"type": "number"},
+    "next_month_market_price": {"type": "number"},
+    "next_year_market_price": {"type": "number"}
+  }
+}

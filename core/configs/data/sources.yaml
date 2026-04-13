@@ -1,0 +1,17 @@
+version: 1
+sources:
+  wind:
+    enabled: true
+    raw_path: data/raw/wind
+  policy_text:
+    enabled: true
+    raw_path: data/raw/policy_text
+  sentiment_text:
+    enabled: true
+    raw_path: data/raw/sentiment_text
+  weather:
+    enabled: true
+    raw_path: data/raw/weather
+  excel_dropzone:
+    enabled: true
+    raw_path: data/raw/excel_dropzone

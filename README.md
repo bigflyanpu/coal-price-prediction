@@ -9,6 +9,9 @@ app_port: 7860
 
 # 煤炭双轨定价多尺度预测系统（严格对齐PDF）
 
+> 当前已切换为 **统一新项目树**：`core/`  
+> 生产构建、训练、服务启动全部以 `core/` 为唯一入口。
+
 本版本从原型升级为研究级流程，按 PDF 技术路线实现：
 
 - 数据层：结构化 + 政策文本 + 舆情文本 + 气象数据，统一契约与质检
@@ -74,12 +77,12 @@ app_port: 7860
 
 - **[模型层技术说明（基于代码现状）](docs/models_technical.md)**：多尺度模型族、数据依赖、训练与推理差异、落盘产物、与申报书模型族差距及答辩引用建议
 
-## 1. 安装依赖
+## 1. 安装依赖（新项目树）
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r core/requirements.txt
 ```
 
 ## 工业级目录树（已重建）
@@ -96,16 +99,10 @@ pip install -r requirements.txt
 
 目录职责详见：`docs/directory_tree_industrial.md`
 
-## 2. 训练（新项目树标准入口）
+## 2. 训练（唯一入口）
 
 ```bash
-python python/cli/run_train.py
-```
-
-兼容旧入口（过渡期保留）：
-
-```bash
-python train.py
+cd core && python train.py
 ```
 
 可选环境变量：
@@ -121,16 +118,10 @@ python train.py
 - 元数据：`reports/metadata.json`
 - 数据质量：`reports/data_quality.csv`、`reports/curated_quality.csv`
 
-## 3. 启动网页（新项目树标准入口）
+## 3. 启动网页（唯一入口）
 
 ```bash
-python python/cli/run_service.py
-```
-
-兼容旧入口（过渡期保留）：
-
-```bash
-python app.py
+cd core && gunicorn app:app --bind 0.0.0.0:7860 --timeout 120
 ```
 
 访问：`http://127.0.0.1:7860`
