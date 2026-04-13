@@ -1,11 +1,11 @@
 ---
-title: Coal Price Prediction
+
+## title: Coal Price Prediction
 emoji: "⛏️"
 colorFrom: blue
 colorTo: indigo
 sdk: docker
 app_port: 7860
----
 
 # 煤炭双轨定价多尺度预测系统（严格对齐PDF）
 
@@ -96,16 +96,16 @@ pip install -r requirements.txt
 
 目录职责详见：`docs/directory_tree_industrial.md`
 
-## 2. 训练（生成模型、回测、报告）
-
-```bash
-python train.py
-```
-
-工业化入口（与现有入口并行）：
+## 2. 训练（新项目树标准入口）
 
 ```bash
 python python/cli/run_train.py
+```
+
+兼容旧入口（过渡期保留）：
+
+```bash
+python train.py
 ```
 
 可选环境变量：
@@ -121,16 +121,16 @@ python python/cli/run_train.py
 - 元数据：`reports/metadata.json`
 - 数据质量：`reports/data_quality.csv`、`reports/curated_quality.csv`
 
-## 3. 启动网页
-
-```bash
-python app.py
-```
-
-工业化服务入口（兼容模式）：
+## 3. 启动网页（新项目树标准入口）
 
 ```bash
 python python/cli/run_service.py
+```
+
+兼容旧入口（过渡期保留）：
+
+```bash
+python app.py
 ```
 
 访问：`http://127.0.0.1:7860`
@@ -179,7 +179,7 @@ curl "http://127.0.0.1:7860/api/text-source-health?kind=sentiment_text&status=wa
 
 ## 5. Hugging Face Spaces部署（无需绑卡）
 
-- Space：<https://huggingface.co/spaces/bigflyanpu/coal_price_prediction>
+- Space：[https://huggingface.co/spaces/bigflyanpu/coal_price_prediction](https://huggingface.co/spaces/bigflyanpu/coal_price_prediction)
 - 应用域名：`https://<你的space名>.hf.space`
 
 如果本机无法直连HF，仓库已提供 GitHub Actions 自动同步流程（`sync-to-hf-space.yml`）。
@@ -211,14 +211,12 @@ curl "http://127.0.0.1:7860/api/text-source-health?kind=sentiment_text&status=wa
 - `.venv/*`
 - `__pycache__/*`
 - `*.pyc`
-- `data/*`
-- `models/*`
+- `.pytest_cache/*`
 
 ### 这意味着什么
 
-- **代码会更新**，但 `data/` 与 `models/` 不会被这条工作流覆盖。
-- Space 运行依赖它自身容器内已有的模型与数据文件。
-- 若线上需要更新模型权重，需要单独设计“模型产物发布策略”（例如单独上传到 HF Dataset/Model Repo，或调整工作流白名单）。
+- 当前新项目树代码和配置会完整同步到 Space。
+- 模型与数据路径已由新项目树管理，部署不会再因忽略 `data/`、`models/` 导致行为不一致。
 
 ### 线上排障优先级（建议）
 
@@ -236,3 +234,4 @@ curl "http://127.0.0.1:7860/api/text-source-health?kind=sentiment_text&status=wa
 - policy_text：`date doc_id title body source url`
 - sentiment_text：`date news_id title body media url`
 - weather：`date region temperature precipitation wind_speed`
+

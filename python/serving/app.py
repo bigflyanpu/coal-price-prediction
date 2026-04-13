@@ -1,9 +1,10 @@
-"""Industrial serving entry (compat mode).
+"""Industrial serving entry.
 
-Current implementation reuses root `app.py` to avoid breaking production,
-while providing a stable import path for future migration.
+This module is now the canonical web app entrypoint.
 """
 
 from __future__ import annotations
 
-from app import app  # noqa: F401
+from app import app
+
+__all__ = ["app"]

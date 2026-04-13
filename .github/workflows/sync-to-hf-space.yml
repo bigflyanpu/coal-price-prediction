@@ -46,8 +46,7 @@ jobs:
                   ".venv/*",
                   "__pycache__/*",
                   "*.pyc",
-                  "data/*",
-                  "models/*",
+                  ".pytest_cache/*",
               ],
           )
           print("Upload to Hugging Face Space completed.")
