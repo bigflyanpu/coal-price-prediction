@@ -1,0 +1,3 @@
+engine: signal_engine
+backend: cpp
+mode: research
