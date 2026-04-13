@@ -4,9 +4,9 @@ __pycache__/
 .DS_Store
 
 # Local runtime artifacts
-models/
-data/
-reports/
+/models/
+/data/
+/reports/
 
 # Logs and environment
 *.log
