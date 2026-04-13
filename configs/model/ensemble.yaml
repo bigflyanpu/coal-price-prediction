@@ -1,9 +1,0 @@
-version: 1
-postprocess:
-  enable_daily_stabilization: true
-  daily_stabilization:
-    min_abs_band: 10.0
-    sigma_scale: 2.5
-    min_pct_band: 0.015
-outputs:
-  precision: 3

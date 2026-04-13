@@ -1,9 +1,0 @@
-name: yearly_svr_ridge_blend
-framework: sklearn
-params:
-  svr:
-    C: 20.0
-    epsilon: 0.05
-    kernel: rbf
-  ridge_alpha: 4.0
-  blend_weight_svr: 0.45

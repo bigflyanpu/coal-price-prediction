@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from pathlib import Path
 import warnings
 
@@ -11,10 +12,13 @@ import pandas as pd
 import torch
 from flask import Flask, jsonify, render_template, request
 
+BASE = Path(__file__).parent
+if str(BASE) not in sys.path:
+    sys.path.insert(0, str(BASE))
+
 from src.features import aggregate_monthly, aggregate_yearly, build_feature_library
 from src.models import DailyBundle, LSTMTransformerRegressor, predict_daily_model, predict_yearly_bundle
 
-BASE = Path(__file__).parent
 MODEL_DIR = BASE / "models"
 REPORT_DIR = BASE / "reports"
 

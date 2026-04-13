@@ -1,5 +1,0 @@
-engine: risk_engine
-backend: cpp
-max_daily_jump_pct: 0.08
-warn_spread_threshold: 10
-critical_spread_threshold: 18

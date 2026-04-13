@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
+
+BASE = Path(__file__).parent
+if str(BASE) not in sys.path:
+    sys.path.insert(0, str(BASE))
 
 from src.pipeline import train_all
 

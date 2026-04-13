@@ -1,2 +1,0 @@
-"""Industrial Python package root."""
-
