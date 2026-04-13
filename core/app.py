@@ -18,6 +18,18 @@ BASE = Path(__file__).parent
 MODEL_DIR = BASE / "models"
 REPORT_DIR = BASE / "reports"
 
+# Backward-compatible fallback for local development:
+# when core runtime artifacts are not present yet, reuse root-level artifacts.
+ROOT_FALLBACK = BASE.parent
+if not MODEL_DIR.exists() or not any(MODEL_DIR.glob("*.joblib")):
+    alt = ROOT_FALLBACK / "models"
+    if alt.exists():
+        MODEL_DIR = alt
+if not REPORT_DIR.exists():
+    alt = ROOT_FALLBACK / "reports"
+    if alt.exists():
+        REPORT_DIR = alt
+
 app = Flask(__name__)
 warnings.filterwarnings("ignore", category=pd.errors.PerformanceWarning)
 
