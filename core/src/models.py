@@ -10,6 +10,7 @@ import torch.nn as nn
 from lightgbm import LGBMRegressor
 from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.metrics import mean_absolute_percentage_error, mean_squared_error
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import RobustScaler
 from sklearn.svm import SVR
 
@@ -490,12 +491,24 @@ class ContractPriceMapper:
     def __init__(self, rule_cfg: DualTrackRuleConfig = DualTrackRuleConfig()) -> None:
         self.reg = LinearRegression()
         self.rule_cfg = rule_cfg
+        self.input_clip_abs = 1e5
+
+    def _sanitize_market_input(self, market_pred: np.ndarray) -> np.ndarray:
+        arr = np.asarray(market_pred, dtype=float).reshape(-1)
+        arr = np.nan_to_num(arr, nan=0.0, posinf=self.input_clip_abs, neginf=-self.input_clip_abs)
+        arr = np.clip(arr, -self.input_clip_abs, self.input_clip_abs)
+        return arr
 
     def fit(self, market_pred: np.ndarray, contract_true: np.ndarray) -> "ContractPriceMapper":
-        self.reg.fit(market_pred.reshape(-1, 1), contract_true)
+        x = self._sanitize_market_input(market_pred)
+        y = np.asarray(contract_true, dtype=float).reshape(-1)
+        y = np.nan_to_num(y, nan=0.0, posinf=self.input_clip_abs, neginf=-self.input_clip_abs)
+        y = np.clip(y, -self.input_clip_abs, self.input_clip_abs)
+        self.reg.fit(x.reshape(-1, 1), y)
         return self
 
     def predict(self, market_pred: np.ndarray, policy_strength: np.ndarray | None = None) -> np.ndarray:
+        market_pred = self._sanitize_market_input(market_pred)
         raw = self.reg.predict(market_pred.reshape(-1, 1))
         floor = market_pred * self.rule_cfg.low_ratio
         cap = market_pred * self.rule_cfg.high_ratio
@@ -509,7 +522,7 @@ class ContractPriceMapper:
 
 @dataclass
 class SentimentForecastBundle:
-    model: Ridge
+    model: RandomForestRegressor
     lags: tuple[int, ...]
     x_scaler: RobustScaler
 
@@ -541,9 +554,18 @@ def train_sentiment_forecast_model(
     y_train, y_test = y.iloc[:split], y.iloc[split:]
     x_scaler = RobustScaler()
     x_train_scaled = x_scaler.fit_transform(x_train)
+    x_train_scaled = np.nan_to_num(x_train_scaled, nan=0.0, posinf=10.0, neginf=-10.0)
+    x_train_scaled = np.clip(x_train_scaled, -10.0, 10.0)
     x_eval = x_test if len(x_test) > 0 else x_train
     x_eval_scaled = x_scaler.transform(x_eval)
-    model = Ridge(alpha=1.0, random_state=42)
+    x_eval_scaled = np.nan_to_num(x_eval_scaled, nan=0.0, posinf=10.0, neginf=-10.0)
+    x_eval_scaled = np.clip(x_eval_scaled, -10.0, 10.0)
+    model = RandomForestRegressor(
+        n_estimators=200,
+        max_depth=6,
+        min_samples_leaf=3,
+        random_state=42,
+    )
     model.fit(x_train_scaled, y_train)
     pred = model.predict(x_eval_scaled)
     target = y_test.to_numpy() if len(y_test) > 0 else y_train.to_numpy()
@@ -555,9 +577,11 @@ def predict_sentiment_next(bundle: SentimentForecastBundle, sentiment_series: pd
     seq = pd.to_numeric(sentiment_series, errors="coerce").dropna().to_numpy()
     if len(seq) < max(bundle.lags):
         raise ValueError("舆情序列长度不足，无法预测下一时点")
-    row = np.array([[seq[-lag] for lag in bundle.lags]], dtype=float)
-    row = np.clip(row, -5.0, 5.0)
+    row = pd.DataFrame([[seq[-lag] for lag in bundle.lags]], columns=[f"lag_{lag}" for lag in bundle.lags], dtype=float)
+    row = row.clip(lower=-5.0, upper=5.0)
     row_scaled = bundle.x_scaler.transform(row)
+    row_scaled = np.nan_to_num(row_scaled, nan=0.0, posinf=10.0, neginf=-10.0)
+    row_scaled = np.clip(row_scaled, -10.0, 10.0)
     return float(bundle.model.predict(row_scaled)[0])
 
 
