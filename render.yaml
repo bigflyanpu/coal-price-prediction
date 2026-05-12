@@ -4,7 +4,7 @@ services:
     env: python
     plan: free
     autoDeploy: true
-    buildCommand: pip install -r core/requirements.txt && cd core && python train.py
+    buildCommand: pip install -r core/requirements.txt
     startCommand: cd core && gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120
     healthCheckPath: /health
     envVars:
