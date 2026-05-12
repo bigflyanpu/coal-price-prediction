@@ -10,5 +10,6 @@ ENV LIVE_TEXT_SOURCES=0
 ENV REFRESH_CACHE=1
 ENV STRICT_REAL_DATA=1
 ENV COAL_CPP_CORE=0
+RUN STRICT_REAL_DATA=0 python train.py
 EXPOSE 7860
 CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:7860", "--timeout", "120"]
