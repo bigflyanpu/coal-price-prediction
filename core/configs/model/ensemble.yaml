@@ -1,4 +1,7 @@
 version: 1
+model_routes:
+  daily_variant: lstm_transformer
+  monthly_variant: lightgbm
 postprocess:
   enable_daily_stabilization: true
   daily_stabilization:

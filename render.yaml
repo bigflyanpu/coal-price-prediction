@@ -10,3 +10,13 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
+      - key: FAST_MODE
+        value: "1"
+      - key: LIVE_TEXT_SOURCES
+        value: "0"
+      - key: REFRESH_CACHE
+        value: "1"
+      - key: STRICT_REAL_DATA
+        value: "1"
+      - key: COAL_CPP_CORE
+        value: "0"

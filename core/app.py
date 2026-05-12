@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+import os
 from pathlib import Path
 import warnings
 
@@ -16,8 +17,18 @@ BASE = Path(__file__).parent
 if str(BASE) not in sys.path:
     sys.path.insert(0, str(BASE))
 
-from src.features import aggregate_monthly, aggregate_yearly, build_feature_library
-from src.models import DailyBundle, LSTMTransformerRegressor, predict_daily_model, predict_yearly_bundle
+from src.features import aggregate_monthly, aggregate_yearly, build_feature_library, enrich_yearly_features
+from src.cpp_bridge import cpp_status, spread_signal_level
+from src.models import (
+    DailyBundle,
+    GRURegressor,
+    LSTMTransformerRegressor,
+    predict_daily_model,
+    predict_sentiment_next,
+    predict_yearly_bundle,
+    stabilize_daily_predictions,
+)
+from src.runtime_config import load_app_runtime_config, load_model_route_config
 
 MODEL_DIR = BASE / "models"
 REPORT_DIR = BASE / "reports"
@@ -36,6 +47,10 @@ if not REPORT_DIR.exists():
 
 app = Flask(__name__)
 warnings.filterwarnings("ignore", category=pd.errors.PerformanceWarning)
+ALLOWED_PREDICT_CSV_ROOTS = [
+    BASE / "data" / "predict_inputs",
+    BASE / "data" / "curated",
+]
 
 
 def _load_json(path: Path, default):
@@ -77,7 +92,11 @@ def load_models():
     monthly_meta = joblib.load(MODEL_DIR / "monthly_meta.joblib")
     yearly_meta = joblib.load(MODEL_DIR / "yearly_meta.joblib")
 
-    daily = LSTMTransformerRegressor(input_size=len(daily_meta["columns"]))
+    daily_variant = str(daily_meta.get("variant", "lstm_transformer")).strip().lower()
+    if daily_variant == "gru":
+        daily = GRURegressor(input_size=len(daily_meta["columns"]))
+    else:
+        daily = LSTMTransformerRegressor(input_size=len(daily_meta["columns"]))
     daily.load_state_dict(torch.load(MODEL_DIR / "daily_model.pt", map_location="cpu"))
     daily.eval()
 
@@ -85,6 +104,7 @@ def load_models():
         model=daily,
         x_scaler=daily_meta["x_scaler"],
         y_scaler=daily_meta["y_scaler"],
+        variant=daily_variant,
     )
 
     return {
@@ -96,6 +116,10 @@ def load_models():
         "yearly_cols": yearly_meta["columns"],
         "mapper": joblib.load(MODEL_DIR / "contract_mapper.joblib"),
         "base_data": joblib.load(MODEL_DIR / "base_data.joblib"),
+        "sentiment_forecast_model": joblib.load(MODEL_DIR / "sentiment_forecast_model.joblib")
+        if (MODEL_DIR / "sentiment_forecast_model.joblib").exists()
+        else None,
+        "cpp_status": cpp_status(),
     }
 
 
@@ -138,52 +162,51 @@ def _daily_last_vector(df: pd.DataFrame, feature_cols: list[str]) -> np.ndarray:
     return aligned[feature_cols].iloc[[-1]].to_numpy()
 
 
-def _stabilize_daily_prediction(raw_pred: float, df: pd.DataFrame) -> float:
-    """
-    Keep next-day prediction in a reasonable neighborhood of latest spot price.
-    This avoids unrealistic one-day jumps when source distribution shifts.
-    """
-    if "market_price" not in df.columns or len(df) < 5:
-        return float(raw_pred)
-
-    market = pd.to_numeric(df["market_price"], errors="coerce").dropna()
-    if market.empty:
-        return float(raw_pred)
-
-    last_price = float(market.iloc[-1])
-    lookback = market.tail(30)
-    diff_std = float(lookback.diff().std(skipna=True) or 0.0)
-    pct_std = float(lookback.pct_change().std(skipna=True) or 0.0)
-
-    # Volatility-based daily move cap + a minimum absolute band.
-    move_cap_abs = max(10.0, diff_std * 2.5, abs(last_price) * max(0.015, pct_std * 2.5))
-    lower = last_price - move_cap_abs
-    upper = last_price + move_cap_abs
-    return float(np.clip(raw_pred, lower, upper))
+def _resolve_allowed_csv_path(path_text: str) -> Path | None:
+    requested = Path(path_text).expanduser()
+    for root in ALLOWED_PREDICT_CSV_ROOTS:
+        root.mkdir(parents=True, exist_ok=True)
+        base = root.resolve()
+        candidate = (base / requested).resolve() if not requested.is_absolute() else requested.resolve()
+        if candidate.is_file() and (candidate == base or base in candidate.parents):
+            return candidate
+    return None
 
 
 def predict_next(df: pd.DataFrame) -> dict:
     state = ensure_state()
     daily_last_x = _daily_last_vector(df, state["daily_cols"])
     day_pred_raw = float(predict_daily_model(state["daily_bundle"], daily_last_x).reshape(-1)[0])
-    day_pred = _stabilize_daily_prediction(day_pred_raw, df)
+    market_history = pd.to_numeric(df.get("market_price", pd.Series(dtype=float)), errors="coerce").dropna().to_numpy()
+    day_pred = float(stabilize_daily_predictions(np.array([day_pred_raw]), history_market=market_history)[0])
 
     policy_strength = float(df.get("policy_strength", pd.Series([0])).iloc[-1]) if len(df) else 0.0
     contract_pred = float(state["mapper"].predict(np.array([day_pred]), np.array([policy_strength]))[0])
 
     month_df = aggregate_monthly(df)
     month_row = month_df.reindex(columns=state["monthly_cols"], fill_value=0).iloc[[-1]]
-    month_pred = float(state["monthly"].predict(month_row)[0])
+    month_pred = float(state["monthly"].predict(month_row, dates=month_df["date"].iloc[[-1]])[0])
 
-    year_df = aggregate_yearly(df)
+    year_df = enrich_yearly_features(aggregate_yearly(df))
     year_row = year_df.reindex(columns=state["yearly_cols"], fill_value=0).iloc[[-1]]
     year_pred = float(predict_yearly_bundle(state["yearly_bundle"], year_row)[0])
+
+    sentiment_next = None
+    if state.get("sentiment_forecast_model") is not None and "sentiment_score" in df.columns:
+        try:
+            sentiment_next = float(
+                predict_sentiment_next(state["sentiment_forecast_model"], pd.to_numeric(df["sentiment_score"], errors="coerce"))
+            )
+        except Exception:
+            sentiment_next = None
 
     return {
         "next_day_market_price": round(float(day_pred), 2),
         "next_day_contract_price": round(contract_pred, 2),
         "next_month_market_price": round(month_pred, 2),
         "next_year_market_price": round(year_pred, 2),
+        "next_day_sentiment_score": None if sentiment_next is None else round(sentiment_next, 4),
+        "spread_signal_level_cpp": int(spread_signal_level(float(day_pred), contract_pred)),
     }
 
 
@@ -398,9 +421,13 @@ def predict_api():
     path = payload.get("csv_path")
 
     if path:
-        p = Path(path)
-        if not p.exists():
-            return jsonify({"error": "csv_path 不存在"}), 400
+        p = _resolve_allowed_csv_path(path)
+        if p is None:
+            return jsonify(
+                {
+                    "error": "csv_path 非法。仅允许读取 core/data/predict_inputs 或 core/data/curated 下的 CSV 文件。"
+                }
+            ), 400
         df = pd.read_csv(p, parse_dates=["date"])
     else:
         df = state["base_data"]
@@ -416,6 +443,30 @@ def backtest_api():
 @app.route("/api/metadata")
 def metadata_api():
     return jsonify(_load_json(REPORT_DIR / "metadata.json", {}))
+
+
+@app.route("/api/observability")
+def observability_api():
+    payload = _load_json(REPORT_DIR / "observability_report.json", {})
+    payload["sentiment_forecast"] = _load_json(REPORT_DIR / "sentiment_forecast_metrics.json", {})
+    payload["sentiment_coverage"] = _load_json(REPORT_DIR / "sentiment_coverage_report.json", {})
+    payload["cpp_status"] = cpp_status()
+    return jsonify(payload)
+
+
+@app.route("/api/system-status")
+def system_status_api():
+    return jsonify(
+        {
+            "cpp_status": cpp_status(),
+            "model_routes": {
+                "daily_variant": load_model_route_config().daily_variant,
+                "monthly_variant": load_model_route_config().monthly_variant,
+            },
+            "ingestion_audit": _load_json(REPORT_DIR / "public_ingestion_audit.json", {}),
+            "sentiment_coverage": _load_json(REPORT_DIR / "sentiment_coverage_report.json", {}),
+        }
+    )
 
 
 @app.route("/api/data-health")
@@ -461,4 +512,5 @@ def health():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=7860)
+    runtime = load_app_runtime_config(os.getenv("APP_ENV", "dev"))
+    app.run(host=runtime["host"], port=runtime["port"])

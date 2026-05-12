@@ -25,6 +25,8 @@ class PolicySentimentIndexer:
         self.policy_count_vectorizer = CountVectorizer(max_features=2000, min_df=2)
         self.lda = LatentDirichletAllocation(n_components=cfg.lda_topics, random_state=42, learning_method="batch")
         self.policy_tfidf = TfidfVectorizer(max_features=3000, ngram_range=(1, 2), min_df=2)
+        self.policy_scaler: StandardScaler | None = None
+        self.policy_svd: TruncatedSVD | None = None
 
     def _bert_embed(self, texts: list[str]) -> np.ndarray:
         if not self.cfg.use_bert:
@@ -59,13 +61,52 @@ class PolicySentimentIndexer:
             tfidf = self.policy_tfidf.fit_transform(texts).toarray()
             return tfidf
 
-    def build_policy_index(self, policy_df: pd.DataFrame) -> pd.DataFrame:
+    def _reduce_policy_features(self, merged: np.ndarray, fit: bool, *, use_svd: bool) -> np.ndarray:
+        merged = np.nan_to_num(merged, nan=0.0, posinf=0.0, neginf=0.0)
+        merged = np.clip(merged, -1e3, 1e3)
+        if fit or self.policy_scaler is None:
+            self.policy_scaler = StandardScaler()
+            merged_scaled = self.policy_scaler.fit_transform(merged)
+        else:
+            merged_scaled = self.policy_scaler.transform(merged)
+        merged_scaled = np.nan_to_num(merged_scaled, nan=0.0, posinf=0.0, neginf=0.0)
+        merged_scaled = np.clip(merged_scaled, -20.0, 20.0)
+
+        comp = min(self.cfg.policy_dims, merged_scaled.shape[1], merged_scaled.shape[0] - 1)
+        if comp <= 0:
+            comp = min(self.cfg.policy_dims, merged_scaled.shape[1], 1)
+
+        if not use_svd:
+            self.policy_svd = None
+            reduced = merged_scaled[:, :comp]
+        elif fit:
+            try:
+                self.policy_svd = TruncatedSVD(n_components=comp, random_state=42)
+                reduced = self.policy_svd.fit_transform(merged_scaled)
+            except Exception:
+                self.policy_svd = None
+                reduced = merged_scaled[:, :comp]
+        elif self.policy_svd is not None:
+            reduced = self.policy_svd.transform(merged_scaled)
+        else:
+            reduced = merged_scaled[:, :comp]
+
+        if reduced.shape[1] < self.cfg.policy_dims:
+            pad = np.zeros((reduced.shape[0], self.cfg.policy_dims - reduced.shape[1]))
+            reduced = np.hstack([reduced, pad])
+        return reduced[:, : self.cfg.policy_dims]
+
+    def build_policy_index(self, policy_df: pd.DataFrame, fit: bool = True) -> pd.DataFrame:
         if policy_df.empty:
             return pd.DataFrame(columns=["date"] + [f"policy_index_{i+1}" for i in range(self.cfg.policy_dims)])
 
         docs = (policy_df["title"].fillna("") + " " + policy_df["body"].fillna("")).tolist()
-        bow = self.policy_count_vectorizer.fit_transform(docs)
-        topic_dist = self.lda.fit_transform(bow)
+        if fit:
+            bow = self.policy_count_vectorizer.fit_transform(docs)
+            topic_dist = self.lda.fit_transform(bow)
+        else:
+            bow = self.policy_count_vectorizer.transform(docs)
+            topic_dist = self.lda.transform(bow)
         semantic = self._bert_embed(docs)
         semantic = np.nan_to_num(semantic, nan=0.0, posinf=0.0, neginf=0.0)
         semantic = np.clip(semantic, -1e3, 1e3)
@@ -81,36 +122,17 @@ class PolicySentimentIndexer:
                 [sum(k in t for k in ["保供", "稳价", "调控", "长协", "安全"]) for t in docs], dtype=float
             )
             merged = topic_df.to_numpy(dtype=float)
-            scaler = StandardScaler()
-            merged = scaler.fit_transform(merged)
-            comp = min(self.cfg.policy_dims, merged.shape[1])
-            reduced = merged[:, :comp]
+            reduced = self._reduce_policy_features(merged, fit=fit, use_svd=False)
         else:
-            # For full mode use SVD with defensive fallbacks.
+            # For full mode use SVD with train-period fit and later transform.
             if semantic.ndim == 1:
                 semantic = semantic.reshape(-1, 1)
             if semantic.shape[1] > 256:
                 semantic = semantic[:, :256]
             merged = np.hstack([topic_dist, semantic])
-            merged = np.nan_to_num(merged, nan=0.0, posinf=0.0, neginf=0.0)
-            merged = np.clip(merged, -1e3, 1e3)
-            scaler = StandardScaler()
-            merged = scaler.fit_transform(merged)
-            comp = min(self.cfg.policy_dims, merged.shape[1], merged.shape[0] - 1)
-            if comp <= 0:
-                comp = 1
-            try:
-                svd = TruncatedSVD(n_components=comp, random_state=42)
-                reduced = svd.fit_transform(merged)
-            except Exception:
-                reduced = merged[:, :comp]
+            reduced = self._reduce_policy_features(merged, fit=fit, use_svd=True)
 
-        # If comp < target dims, zero pad for stable schema.
-        if comp < self.cfg.policy_dims:
-            pad = np.zeros((reduced.shape[0], self.cfg.policy_dims - comp))
-            reduced = np.hstack([reduced, pad])
-
-        out = pd.DataFrame(reduced[:, : self.cfg.policy_dims], columns=[f"policy_index_{i+1}" for i in range(self.cfg.policy_dims)])
+        out = pd.DataFrame(reduced, columns=[f"policy_index_{i+1}" for i in range(self.cfg.policy_dims)])
         out["date"] = pd.to_datetime(policy_df["date"]).to_numpy()
 
         daily = out.groupby("date").mean().reset_index()
@@ -141,5 +163,30 @@ class PolicySentimentIndexer:
         daily["sentiment_volatility"] = daily["sentiment_score"].rolling(14, min_periods=2).std().fillna(0)
         return daily
 
-    def build_indices(self, policy_df: pd.DataFrame, sentiment_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        return self.build_policy_index(policy_df), self.build_sentiment_index(sentiment_df)
+    def build_indices(
+        self,
+        policy_df: pd.DataFrame,
+        sentiment_df: pd.DataFrame,
+        policy_cutoff_date: pd.Timestamp | None = None,
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        if policy_cutoff_date is None:
+            return self.build_policy_index(policy_df, fit=True), self.build_sentiment_index(sentiment_df)
+
+        tmp = policy_df.copy()
+        tmp["date"] = pd.to_datetime(tmp["date"])
+        train_part = tmp[tmp["date"] <= policy_cutoff_date].copy()
+        test_part = tmp[tmp["date"] > policy_cutoff_date].copy()
+        if train_part.empty:
+            policy_daily = self.build_policy_index(tmp, fit=True)
+        elif test_part.empty:
+            policy_daily = self.build_policy_index(train_part, fit=True)
+        else:
+            policy_train = self.build_policy_index(train_part, fit=True)
+            policy_test = self.build_policy_index(test_part, fit=False)
+            policy_daily = (
+                pd.concat([policy_train, policy_test], ignore_index=True)
+                .sort_values("date")
+                .reset_index(drop=True)
+            )
+        sentiment_daily = self.build_sentiment_index(sentiment_df)
+        return policy_daily, sentiment_daily

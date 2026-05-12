@@ -14,7 +14,13 @@ from src.pipeline import train_all
 def main() -> None:
     fast_mode = os.getenv("FAST_MODE", "0") == "1"
     refresh_cache = os.getenv("REFRESH_CACHE", "0") == "1"
-    result = train_all(fast_mode=fast_mode, refresh_cache=refresh_cache, verbose=True)
+    strict_real_data = os.getenv("STRICT_REAL_DATA", "1") == "1"
+    result = train_all(
+        fast_mode=fast_mode,
+        refresh_cache=refresh_cache,
+        verbose=True,
+        strict_real_data=strict_real_data,
+    )
     print("[cli] train finished")
     print(result.metadata)
 

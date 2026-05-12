@@ -78,6 +78,35 @@ def build_paper_experiment_tables(report_dir: str | Path = "reports") -> dict[st
             }
         )
 
+    current_holdout = yearly_exp.get("current_holdout", {})
+    baseline_holdout = yearly_exp.get("baseline_reference", {}).get("holdout", {})
+    holdout_delta = yearly_exp.get("holdout_delta_vs_baseline", {})
+    if current_holdout or baseline_holdout:
+        rows.extend(
+            [
+                {
+                    "section": "yearly_holdout_compare",
+                    "metric": "yearly_current_holdout",
+                    "online_mape_pct": _to_percent(current_holdout.get("mape")),
+                    "backtest_mape_pct": _to_percent(baseline_holdout.get("mape")),
+                    "online_rmse": current_holdout.get("rmse"),
+                    "backtest_rmse": baseline_holdout.get("rmse"),
+                    "online_mae": current_holdout.get("mae"),
+                    "backtest_mae": baseline_holdout.get("mae"),
+                },
+                {
+                    "section": "yearly_holdout_compare",
+                    "metric": "yearly_delta_vs_baseline",
+                    "online_mape_pct": _to_percent(holdout_delta.get("mape")),
+                    "backtest_mape_pct": None,
+                    "online_rmse": holdout_delta.get("rmse"),
+                    "backtest_rmse": None,
+                    "online_mae": holdout_delta.get("mae"),
+                    "backtest_mae": None,
+                },
+            ]
+        )
+
     table_df = pd.DataFrame(rows)
     csv_path = report_dir / "paper_experiment_tables.csv"
     table_df.to_csv(csv_path, index=False)
@@ -133,6 +162,27 @@ def build_paper_experiment_tables(report_dir: str | Path = "reports") -> dict[st
         except Exception:
             md_lines.append(cv_fmt.to_csv(index=False))
 
+    yearly_cmp_df = table_df[table_df["section"] == "yearly_holdout_compare"].copy()
+    md_lines.extend(["", "## 表3：年度Holdout优化对比（本轮 vs 基线）", ""])
+    if yearly_cmp_df.empty:
+        md_lines.append("无可用数据。")
+    else:
+        cmp_fmt = yearly_cmp_df[
+            [
+                "metric",
+                "online_mape_pct",
+                "backtest_mape_pct",
+                "online_rmse",
+                "backtest_rmse",
+                "online_mae",
+                "backtest_mae",
+            ]
+        ].copy()
+        try:
+            md_lines.append(cmp_fmt.to_markdown(index=False))
+        except Exception:
+            md_lines.append(cmp_fmt.to_csv(index=False))
+
     md_path = report_dir / "paper_experiment_tables.md"
     md_path.write_text("\n".join(md_lines), encoding="utf-8")
 
@@ -143,6 +193,7 @@ def build_paper_experiment_tables(report_dir: str | Path = "reports") -> dict[st
         "rows_total": int(len(table_df)),
         "main_metric_rows": int(len(main_df)),
         "yearly_cv_rows": int(len(cv_df)),
+        "yearly_compare_rows": int(len(yearly_cmp_df)),
     }
     (report_dir / "paper_experiment_tables_meta.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=2),
@@ -268,16 +319,63 @@ def build_paper_figures(report_dir: str | Path = "reports") -> dict[str, Any]:
     return meta
 
 
+def build_observability_report(report_dir: str | Path = "reports") -> dict[str, Any]:
+    report_dir = Path(report_dir)
+    report_dir.mkdir(parents=True, exist_ok=True)
+    importance_path = report_dir / "feature_importance_full.csv"
+    drift_path = report_dir / "feature_drift_summary.csv"
+    backtest_summary = _load_json(report_dir / "rolling_backtest_summary.json", {})
+    sentiment_forecast = _load_json(report_dir / "sentiment_forecast_metrics.json", {})
+    sentiment_coverage = _load_json(report_dir / "sentiment_coverage_report.json", {})
+
+    top_importance = []
+    if importance_path.exists():
+        imp_df = pd.read_csv(importance_path)
+        if not imp_df.empty:
+            top_importance = imp_df.head(20).to_dict(orient="records")
+
+    top_drift = []
+    if drift_path.exists():
+        drift_df = pd.read_csv(drift_path)
+        if not drift_df.empty:
+            top_drift = drift_df.head(20).to_dict(orient="records")
+
+    uncertainty = {}
+    for scale, metrics in backtest_summary.items():
+        uncertainty[scale] = {
+            "mape": metrics.get("mape"),
+            "mape_std": metrics.get("mape_std"),
+            "mape_ci95": metrics.get("mape_ci95"),
+            "n_folds": metrics.get("n_folds"),
+        }
+
+    payload = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "importance_top20": top_importance,
+        "drift_top20": top_drift,
+        "backtest_uncertainty": uncertainty,
+        "sentiment_forecast": sentiment_forecast,
+        "sentiment_coverage": sentiment_coverage,
+    }
+    (report_dir / "observability_report.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return payload
+
+
 def build_paper_assets(report_dir: str | Path = "reports") -> dict[str, Any]:
     report_dir = Path(report_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
 
     tables_meta = build_paper_experiment_tables(report_dir)
     figures_meta = build_paper_figures(report_dir)
+    observability_meta = build_observability_report(report_dir)
     index = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "tables": tables_meta,
         "figures": figures_meta,
+        "observability": observability_meta,
     }
     (report_dir / "paper_assets_index.json").write_text(
         json.dumps(index, ensure_ascii=False, indent=2),

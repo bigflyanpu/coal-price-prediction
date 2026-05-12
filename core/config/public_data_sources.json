@@ -1,0 +1,56 @@
+{
+  "request": {
+    "timeout_sec": 15,
+    "retries": 2,
+    "backoff_sec": 1.5,
+    "user_agent": "coal-price-prediction-mvp/1.0"
+  },
+  "structured_sources": [
+    {
+      "name": "ncexc_coal_index",
+      "url": "https://www.ncexc.cn/hqzs/zhzs/",
+      "enabled": true
+    },
+    {
+      "name": "sse_cbcfi",
+      "url": "https://www.sse.net.cn/index/singleIndex?indexType=cbcfi",
+      "enabled": true
+    },
+    {
+      "name": "stats_energy_monthly",
+      "url": "https://www.stats.gov.cn/sj/zxfb/",
+      "enabled": true
+    }
+  ],
+  "weather_sources": [
+    {
+      "name": "nmc_weather_news",
+      "url": "http://www.nmc.cn/publish/forecast.html",
+      "enabled": true
+    }
+  ],
+  "policy_sources": [
+    {
+      "name": "gov_policy_rss",
+      "url": "https://www.gov.cn/zhengce/zuixin/rss.xml",
+      "enabled": true
+    },
+    {
+      "name": "nea_notice_rss",
+      "url": "https://www.nea.gov.cn/xwzx/nyyw/index.xml",
+      "enabled": true
+    }
+  ],
+  "sentiment_sources": [
+    {
+      "name": "chinanews_finance_rss",
+      "url": "https://www.chinanews.com.cn/rss/finance.xml",
+      "enabled": true
+    },
+    {
+      "name": "chinanews_scroll_rss",
+      "url": "https://www.chinanews.com.cn/rss/scroll-news.xml",
+      "enabled": true
+    }
+  ]
+}

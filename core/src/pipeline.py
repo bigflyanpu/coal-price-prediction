@@ -30,13 +30,17 @@ from .models import (
     DailyTrainerConfig,
     evaluate_metrics,
     predict_daily_model,
+    predict_sentiment_next,
+    stabilize_daily_predictions,
     train_daily_model,
+    train_sentiment_forecast_model,
     predict_yearly_bundle,
     train_best_monthly_model,
     train_best_yearly_model,
 )
 from .nlp_index import NLPConfig, PolicySentimentIndexer
 from .reporting import build_paper_assets
+from .runtime_config import load_daily_train_config, load_model_route_config
 
 
 @dataclass
@@ -51,6 +55,7 @@ class TrainConfig:
     fast_mode: bool = False
     refresh_cache: bool = False
     verbose: bool = True
+    strict_real_data: bool = True
 
 
 class CoalResearchPipeline:
@@ -83,8 +88,18 @@ class CoalResearchPipeline:
             use_live_text = not self.train_cfg.fast_mode
         else:
             use_live_text = live_text_enabled == "1"
-        ingestor = MultiSourceIngestor(IngestionConfig(use_live_text_sources=use_live_text))
-        _, _ = ingestor.run()
+        strict_env = os.getenv("STRICT_REAL_DATA")
+        strict_real_data = self.train_cfg.strict_real_data if strict_env is None else strict_env == "1"
+        ingestor = MultiSourceIngestor(
+            IngestionConfig(
+                use_live_text_sources=use_live_text,
+                strict_real_data=strict_real_data,
+            )
+        )
+        _, source_results = ingestor.run()
+        if strict_real_data:
+            for result in source_results.values():
+                ingestor.contract.ensure_valid(result, max_null_rate=0.4)
         build_data_gap_audit(start=ingestor.cfg.start, end=ingestor.cfg.end, report_dir="reports", raw_dir=ingestor.cfg.raw_dir)
 
         structured = pd.read_csv("data/raw/structured.csv", parse_dates=["date"])
@@ -101,6 +116,9 @@ class CoalResearchPipeline:
             sent_daily = pd.read_csv(sent_cache, parse_dates=["date"])
         else:
             self._log("stage B: build policy/sentiment indices")
+            structured_sorted = structured.sort_values("date").reset_index(drop=True)
+            cutoff_idx = max(1, int(len(structured_sorted) * 0.8)) - 1
+            policy_cutoff_date = pd.to_datetime(structured_sorted.iloc[cutoff_idx]["date"])
             nlp = PolicySentimentIndexer(
                 NLPConfig(
                     policy_dims=12,
@@ -109,9 +127,30 @@ class CoalResearchPipeline:
                     bert_local_files_only=self.train_cfg.fast_mode,
                 )
             )
-            policy_daily, sent_daily = nlp.build_indices(policy_raw, sentiment_raw)
+            policy_daily, sent_daily = nlp.build_indices(
+                policy_raw,
+                sentiment_raw,
+                policy_cutoff_date=policy_cutoff_date,
+            )
             policy_daily.to_csv(policy_cache, index=False)
             sent_daily.to_csv(sent_cache, index=False)
+
+        sentiment_tmp = sentiment_raw.copy()
+        sentiment_tmp["date"] = pd.to_datetime(sentiment_tmp["date"], errors="coerce")
+        sentiment_tmp = sentiment_tmp.dropna(subset=["date"])
+        media_col = "media" if "media" in sentiment_tmp.columns else "source"
+        sentiment_coverage = {
+            "generated_at": pd.Timestamp.utcnow().isoformat(),
+            "records_total": int(len(sentiment_tmp)),
+            "media_count": int(sentiment_tmp.get(media_col, pd.Series(dtype=str)).astype(str).nunique()),
+            "day_coverage": int(sentiment_tmp["date"].dt.date.nunique()) if not sentiment_tmp.empty else 0,
+            "window_start": None if sentiment_tmp.empty else str(sentiment_tmp["date"].min().date()),
+            "window_end": None if sentiment_tmp.empty else str(sentiment_tmp["date"].max().date()),
+        }
+        Path("reports/sentiment_coverage_report.json").write_text(
+            json.dumps(sentiment_coverage, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
         weather_daily = (
             weather_raw.groupby("date")[["temperature", "precipitation", "wind_speed"]]
@@ -128,12 +167,14 @@ class CoalResearchPipeline:
             if c not in daily.columns:
                 daily[c] = 0.0
 
-        daily = daily.sort_values("date").ffill().bfill().reset_index(drop=True)
+        daily = daily.sort_values("date").ffill().fillna(0.0).reset_index(drop=True)
         daily.to_csv(self.data_path, index=False)
 
         contract = DataContract()
         contract_result = contract.validate_curated_daily(daily)
         contract.dump_quality_report([contract_result], "reports/curated_quality.csv")
+        if strict_real_data:
+            contract.ensure_valid(contract_result, max_null_rate=0.4)
         return daily
 
     def _split_train_test(self, df: pd.DataFrame, ratio: float = 0.8) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -157,7 +198,7 @@ class CoalResearchPipeline:
             .reset_index()
         )
         monthly = monthly.merge(pred_month, on="date", how="left")
-        monthly = monthly.sort_values("date").ffill().bfill()
+        monthly = monthly.sort_values("date").ffill().fillna(0.0)
         return monthly
 
     def _build_yearly_enhanced(self, daily_df: pd.DataFrame, monthly_df: pd.DataFrame, monthly_pred: np.ndarray) -> pd.DataFrame:
@@ -180,12 +221,72 @@ class CoalResearchPipeline:
         )
         yearly = yearly.merge(pred_year, on="date", how="left")
         yearly = enrich_yearly_features(yearly)
-        yearly = yearly.sort_values("date").ffill().bfill()
+        yearly = yearly.sort_values("date").ffill().fillna(0.0)
         return yearly
+
+    def _align_selected_frame(
+        self,
+        feature_df: pd.DataFrame,
+        selected_cols: list[str],
+        target_col: str = "market_price",
+    ) -> pd.DataFrame:
+        base_cols = ["date", target_col]
+        if "contract_price" in feature_df.columns:
+            base_cols.append("contract_price")
+        aligned = feature_df.reindex(columns=base_cols + selected_cols, fill_value=0.0).copy()
+        return aligned
+
+    def _build_feature_drift_report(
+        self,
+        train_df: pd.DataFrame,
+        test_df: pd.DataFrame,
+        feature_cols: list[str],
+    ) -> pd.DataFrame:
+        rows: list[dict[str, float | str]] = []
+        eps = 1e-6
+        for col in feature_cols:
+            train_s = pd.to_numeric(train_df[col], errors="coerce")
+            test_s = pd.to_numeric(test_df[col], errors="coerce")
+            train_mean = float(train_s.mean(skipna=True) or 0.0)
+            test_mean = float(test_s.mean(skipna=True) or 0.0)
+            train_std = float(train_s.std(skipna=True) or 0.0)
+            test_std = float(test_s.std(skipna=True) or 0.0)
+            mean_shift_ratio = abs(test_mean - train_mean) / (abs(train_mean) + eps)
+            std_shift_ratio = abs(test_std - train_std) / (abs(train_std) + eps)
+            drift_score = 0.7 * mean_shift_ratio + 0.3 * std_shift_ratio
+            rows.append(
+                {
+                    "feature": col,
+                    "train_mean": train_mean,
+                    "test_mean": test_mean,
+                    "train_std": train_std,
+                    "test_std": test_std,
+                    "mean_shift_ratio": float(mean_shift_ratio),
+                    "std_shift_ratio": float(std_shift_ratio),
+                    "drift_score": float(drift_score),
+                }
+            )
+        return pd.DataFrame(rows).sort_values("drift_score", ascending=False).reset_index(drop=True)
 
     def train(self) -> TrainOutput:
         warnings.filterwarnings("ignore", category=pd.errors.PerformanceWarning)
         self._log(f"train start (fast_mode={self.train_cfg.fast_mode}, refresh_cache={self.train_cfg.refresh_cache})")
+        yearly_exp_path = Path("reports/yearly_model_experiments.json")
+        prev_yearly_exp = {}
+        if yearly_exp_path.exists():
+            try:
+                prev_yearly_exp = json.loads(yearly_exp_path.read_text(encoding="utf-8"))
+            except Exception:
+                prev_yearly_exp = {}
+
+        prev_online_metrics = {}
+        prev_online_path = Path("reports/online_holdout_metrics.json")
+        if prev_online_path.exists():
+            try:
+                prev_online_metrics = json.loads(prev_online_path.read_text(encoding="utf-8"))
+            except Exception:
+                prev_online_metrics = {}
+
         daily_df = self._build_research_dataset()
 
         feat_cache = self.cache_dir / "feature_library.joblib"
@@ -196,51 +297,112 @@ class CoalResearchPipeline:
             feature_df = joblib.load(feat_cache)
             selected_df = joblib.load(sel_cache)
             selected_features = json.loads(cols_cache.read_text(encoding="utf-8"))
+            feature_importance_df = None
         else:
             self._log("stage C: build feature library and XGBoost selection")
             feature_df = build_feature_library(daily_df, FeatureConfig())
-            selected_df, selected_features = select_core_features_xgboost(
-                feature_df,
+            feature_train, feature_test = self._split_train_test(feature_df)
+            train_sel, selected_features, feature_importance_df = select_core_features_xgboost(
+                feature_train,
                 target_col="market_price",
                 keep_top_k=200,
+                return_importance=True,
             )
+            test_sel = self._align_selected_frame(feature_test, selected_features)
+            selected_df = pd.concat([train_sel, test_sel], ignore_index=True)
             joblib.dump(feature_df, feat_cache)
             joblib.dump(selected_df, sel_cache)
             cols_cache.write_text(json.dumps(selected_features, ensure_ascii=False), encoding="utf-8")
+            feature_importance_df.to_csv("reports/feature_importance_full.csv", index=False)
+            Path("reports/feature_importance_top20.json").write_text(
+                json.dumps(feature_importance_df.head(20).to_dict(orient="records"), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
 
         self._log("stage D: train daily/monthly/yearly models")
+        model_routes = load_model_route_config()
         train_df, test_df = self._split_train_test(selected_df)
         x_cols = selected_features
         x_train = train_df[x_cols]
         y_train = train_df["market_price"]
         x_test = test_df[x_cols]
         y_test = test_df["market_price"]
+        if feature_importance_df is None:
+            _, _, feature_importance_df = select_core_features_xgboost(
+                train_df[["date", "market_price", "contract_price", *x_cols]].copy(),
+                target_col="market_price",
+                keep_top_k=len(x_cols),
+                return_importance=True,
+            )
+            feature_importance_df.to_csv("reports/feature_importance_full.csv", index=False)
+            Path("reports/feature_importance_top20.json").write_text(
+                json.dumps(feature_importance_df.head(20).to_dict(orient="records"), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        drift_df = self._build_feature_drift_report(train_df, test_df, x_cols)
+        drift_df.to_csv("reports/feature_drift_summary.csv", index=False)
+        Path("reports/feature_drift_top20.json").write_text(
+            json.dumps(drift_df.head(20).to_dict(orient="records"), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
-        daily_bundle = train_daily_model(x_train.to_numpy(), y_train.to_numpy(), DailyTrainerConfig())
-        daily_pred_test = predict_daily_model(daily_bundle, x_test.to_numpy())
+        daily_runtime_cfg = load_daily_train_config()
+        daily_bundle = train_daily_model(
+            x_train.to_numpy(),
+            y_train.to_numpy(),
+            DailyTrainerConfig(
+                epochs=daily_runtime_cfg.epochs,
+                lr=daily_runtime_cfg.learning_rate,
+                batch_size=daily_runtime_cfg.batch_size,
+            ),
+            variant=model_routes.daily_variant,
+        )
+        daily_pred_test_raw = predict_daily_model(daily_bundle, x_test.to_numpy())
+        daily_pred_test = stabilize_daily_predictions(
+            daily_pred_test_raw,
+            history_market=y_train.to_numpy(),
+            future_market=y_test.to_numpy(),
+        )
         daily_metrics = evaluate_metrics(y_test.to_numpy(), daily_pred_test)
 
         policy_for_rule = test_df.get("policy_strength", pd.Series(np.zeros(len(test_df))))
-        daily_pred_train = predict_daily_model(daily_bundle, x_train.to_numpy())
+        daily_pred_train_raw = predict_daily_model(daily_bundle, x_train.to_numpy())
+        daily_pred_train = stabilize_daily_predictions(
+            daily_pred_train_raw,
+            history_market=y_train.to_numpy()[:1],
+            future_market=y_train.to_numpy(),
+        )
         mapper = ContractPriceMapper().fit(daily_pred_train, train_df["contract_price"].to_numpy())
         contract_pred = mapper.predict(daily_pred_test, policy_for_rule.to_numpy())
         contract_metrics = evaluate_metrics(test_df["contract_price"].to_numpy(), contract_pred)
 
         full_daily_for_agg = daily_df.copy()
-        daily_pred_full = predict_daily_model(daily_bundle, selected_df[x_cols].to_numpy())
+        daily_pred_full_raw = predict_daily_model(daily_bundle, selected_df[x_cols].to_numpy())
+        daily_pred_full = stabilize_daily_predictions(
+            daily_pred_full_raw,
+            history_market=y_train.to_numpy(),
+            future_market=selected_df["market_price"].to_numpy(),
+        )
         daily_pred_frame = pd.DataFrame({"date": selected_df["date"].to_numpy(), "daily_pred": daily_pred_full})
         monthly = self._build_monthly_enhanced(full_daily_for_agg, daily_pred_frame)
         month_drop = ["date", "market_price", "contract_price"]
         x_month = monthly.drop(columns=month_drop)
         y_month = monthly["market_price"]
         split_m = max(12, int(len(monthly) * 0.8))
+        month_dates = monthly["date"]
         x_m_train, x_m_test = x_month.iloc[:split_m], x_month.iloc[split_m:]
         y_m_train, y_m_test = y_month.iloc[:split_m], y_month.iloc[split_m:]
-        monthly_model, monthly_params, monthly_val_mape = train_best_monthly_model(x_m_train, y_m_train)
-        month_pred = monthly_model.predict(x_m_test)
+        d_m_train, d_m_test = month_dates.iloc[:split_m], month_dates.iloc[split_m:]
+        monthly_model, monthly_params, monthly_val_mape = train_best_monthly_model(
+            x_m_train,
+            y_m_train,
+            train_dates=d_m_train,
+            variant=model_routes.monthly_variant,
+        )
+        month_pred = monthly_model.predict(x_m_test, dates=d_m_test)
         monthly_metrics = evaluate_metrics(y_m_test.to_numpy(), month_pred)
 
-        month_pred_full = monthly_model.predict(x_month)
+        month_pred_full = monthly_model.predict(x_month, dates=month_dates)
         yearly = self._build_yearly_enhanced(full_daily_for_agg, monthly, month_pred_full)
         year_drop = ["date", "market_price", "contract_price"]
         x_year = yearly.drop(columns=year_drop)
@@ -251,13 +413,45 @@ class CoalResearchPipeline:
         yearly_bundle, yearly_params, yearly_val_mape = train_best_yearly_model(x_y_train, y_y_train)
         year_pred = predict_yearly_bundle(yearly_bundle, x_y_test)
         yearly_metrics = evaluate_metrics(y_y_test.to_numpy(), year_pred)
-        Path("reports/yearly_model_experiments.json").write_text(
+
+        sent_series = pd.to_numeric(daily_df.get("sentiment_score", pd.Series(dtype=float)), errors="coerce").dropna()
+        sent_bundle, sent_metrics = train_sentiment_forecast_model(sent_series)
+        next_sentiment = predict_sentiment_next(sent_bundle, sent_series)
+        Path("reports/sentiment_forecast_metrics.json").write_text(
+            json.dumps(
+                {
+                    "holdout": sent_metrics,
+                    "next_day_sentiment_score": next_sentiment,
+                    "lags": list(sent_bundle.lags),
+                    "coverage_report_path": "reports/sentiment_coverage_report.json",
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        baseline_yearly_metrics = prev_online_metrics.get("yearly_market", {})
+        yearly_delta = {}
+        for metric_name in ("mape", "rmse", "mae"):
+            prev_v = baseline_yearly_metrics.get(metric_name)
+            cur_v = yearly_metrics.get(metric_name)
+            if isinstance(prev_v, (int, float)) and isinstance(cur_v, (int, float)):
+                yearly_delta[metric_name] = float(cur_v) - float(prev_v)
+
+        yearly_exp_path.write_text(
             json.dumps(
                 {
                     "best_params": yearly_params.get("best", yearly_params),
                     "val_mape": yearly_val_mape,
                     "cv_top": yearly_params.get("cv_top", []),
                     "search_space": yearly_params.get("search_space", {}),
+                    "current_holdout": yearly_metrics,
+                    "baseline_reference": {
+                        "best_params": prev_yearly_exp.get("best_params"),
+                        "val_mape": prev_yearly_exp.get("val_mape"),
+                        "holdout": baseline_yearly_metrics,
+                    },
+                    "holdout_delta_vs_baseline": yearly_delta,
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -281,6 +475,7 @@ class CoalResearchPipeline:
                 "columns": x_cols,
                 "x_scaler": daily_bundle.x_scaler,
                 "y_scaler": daily_bundle.y_scaler,
+                "variant": daily_bundle.variant,
             },
             self.model_dir / "daily_meta.joblib",
         )
@@ -290,6 +485,7 @@ class CoalResearchPipeline:
         joblib.dump({"columns": list(x_year.columns)}, self.model_dir / "yearly_meta.joblib")
         joblib.dump(mapper, self.model_dir / "contract_mapper.joblib")
         joblib.dump(daily_df, self.model_dir / "base_data.joblib")
+        joblib.dump(sent_bundle, self.model_dir / "sentiment_forecast_model.joblib")
 
         metadata = {
             "trained_at": datetime.now(timezone.utc).isoformat(),
@@ -307,6 +503,16 @@ class CoalResearchPipeline:
                 "dual_track": "RuleMapper_v2",
                 "policy_index": "BERT_LDA_12d",
             },
+            "observability": {
+                "feature_importance_path": "reports/feature_importance_full.csv",
+                "feature_drift_path": "reports/feature_drift_summary.csv",
+                "ingestion_audit_path": "reports/public_ingestion_audit.json",
+                "sentiment_coverage_path": "reports/sentiment_coverage_report.json",
+            },
+            "model_routes": {
+                "daily_variant": model_routes.daily_variant,
+                "monthly_variant": model_routes.monthly_variant,
+            },
             "tuning": {
                 "monthly_params": monthly_params,
                 "monthly_val_mape": monthly_val_mape,
@@ -321,6 +527,7 @@ class CoalResearchPipeline:
             "daily_contract": contract_metrics,
             "monthly_market": monthly_metrics,
             "yearly_market": yearly_metrics,
+            "sentiment_forecast": sent_metrics,
         }
         Path("reports/online_holdout_metrics.json").write_text(
             json.dumps(online_metrics, ensure_ascii=False, indent=2),
@@ -339,6 +546,12 @@ def train_all(
     fast_mode: bool = False,
     refresh_cache: bool = False,
     verbose: bool = True,
+    strict_real_data: bool = True,
 ) -> TrainOutput:
-    cfg = TrainConfig(fast_mode=fast_mode, refresh_cache=refresh_cache, verbose=verbose)
+    cfg = TrainConfig(
+        fast_mode=fast_mode,
+        refresh_cache=refresh_cache,
+        verbose=verbose,
+        strict_real_data=strict_real_data,
+    )
     return CoalResearchPipeline(data_path=data_path, model_dir=model_dir, train_cfg=cfg).train()

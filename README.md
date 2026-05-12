@@ -7,10 +7,10 @@ sdk: docker
 app_port: 7860
 ---
 
-# 煤炭双轨定价多尺度预测系统（已彻底收口到 `core/`）
+# 煤炭双轨定价多尺度预测系统（主链路在 `core/`）
 
-本仓库已完成结构收口：**所有生产可用代码、配置、模型流程统一在 `core/`**。  
-根目录仅保留部署与兼容入口，不再作为主开发路径。
+当前仓库主链路统一在 `core/`：训练、推理与评估均以 `core/` 为运行根。  
+根目录保留部署与兼容入口，请默认在 `core/` 下开发和运行。
 
 ## 1) 唯一项目根
 
@@ -48,7 +48,7 @@ gunicorn app:app --bind 0.0.0.0:7860 --timeout 120
 - Docker 构建：使用 `core/requirements.txt`，并在 `core/` 下训练与启动
 - Procfile：`cd core && gunicorn app:app ...`
 - Render：build/start 均在 `core/` 下执行
-- GitHub Actions -> HF Space：上传时已忽略旧目录，仅保留 `core/` 主树和部署必要文件
+- GitHub Actions -> HF Space：通过 `ignore_patterns` 过滤旧目录与无关产物，实际上传范围以工作流规则为准
 
 ## 4) 模型说明（当前线上实现）
 

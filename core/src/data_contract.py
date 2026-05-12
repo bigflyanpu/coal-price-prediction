@@ -22,7 +22,11 @@ class ValidationResult:
 
 class DataContract:
     def __init__(self, config_path: str | Path = "config/data_contract.json") -> None:
-        self.config_path = Path(config_path)
+        input_path = Path(config_path)
+        if input_path.exists():
+            self.config_path = input_path
+        else:
+            self.config_path = Path(__file__).resolve().parents[1] / "config" / "data_contract.json"
         self.contract = json.loads(self.config_path.read_text(encoding="utf-8"))
 
     def required_columns(self, source_name: str) -> list[str]:
@@ -61,3 +65,17 @@ class DataContract:
                 }
             )
         pd.DataFrame(rows).to_csv(path, index=False)
+
+    def ensure_valid(
+        self,
+        result: ValidationResult,
+        *,
+        max_null_rate: float = 0.35,
+    ) -> None:
+        if result.missing_columns:
+            raise ValueError(f"{result.name} 缺少必需列: {result.missing_columns}")
+        if result.duplicate_rows > 0:
+            raise ValueError(f"{result.name} 存在重复记录: {result.duplicate_rows}")
+        high_null = [k for k, v in result.null_rate.items() if float(v) > max_null_rate]
+        if high_null:
+            raise ValueError(f"{result.name} 列缺失率过高: {high_null}")

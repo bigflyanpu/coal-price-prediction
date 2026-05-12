@@ -9,3 +9,5 @@ gunicorn
 xgboost
 transformers
 pywavelets
+pyyaml
+pybind11

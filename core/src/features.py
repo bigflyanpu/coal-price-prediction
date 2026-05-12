@@ -92,7 +92,8 @@ def select_core_features_xgboost(
     feature_df: pd.DataFrame,
     target_col: str,
     keep_top_k: int = 200,
-) -> Tuple[pd.DataFrame, List[str]]:
+    return_importance: bool = False,
+) -> Tuple[pd.DataFrame, List[str]] | Tuple[pd.DataFrame, List[str], pd.DataFrame]:
     candidates = [c for c in feature_df.columns if c not in {"date", target_col, "contract_price"}]
     x = feature_df[candidates]
     y = feature_df[target_col]
@@ -121,7 +122,16 @@ def select_core_features_xgboost(
         imp = pd.Series(model.feature_importances_, index=candidates).sort_values(ascending=False)
 
     selected = list(imp.head(min(keep_top_k, len(imp))).index)
-    return feature_df[["date", target_col, "contract_price"] + selected].copy(), selected
+    selected_df = feature_df[["date", target_col, "contract_price"] + selected].copy()
+    importance_df = (
+        imp.reset_index()
+        .rename(columns={"index": "feature", 0: "importance"})
+        .assign(rank=lambda d: np.arange(1, len(d) + 1))
+        [["rank", "feature", "importance"]]
+    )
+    if return_importance:
+        return selected_df, selected, importance_df
+    return selected_df, selected
 
 
 def aggregate_monthly(df: pd.DataFrame) -> pd.DataFrame:
@@ -146,6 +156,14 @@ def aggregate_yearly(df: pd.DataFrame) -> pd.DataFrame:
 def enrich_yearly_features(yearly_df: pd.DataFrame) -> pd.DataFrame:
     out = yearly_df.sort_values("date").copy()
 
+    def _clip_series(s: pd.Series, low_q: float = 0.05, high_q: float = 0.95) -> pd.Series:
+        clean = pd.to_numeric(s, errors="coerce")
+        if clean.dropna().empty:
+            return clean.fillna(0.0)
+        lo = float(clean.quantile(low_q))
+        hi = float(clean.quantile(high_q))
+        return clean.clip(lower=lo, upper=hi)
+
     base_cols = [
         "coal_output",
         "import_volume",
@@ -159,10 +177,15 @@ def enrich_yearly_features(yearly_df: pd.DataFrame) -> pd.DataFrame:
     ]
     for col in base_cols:
         if col in out.columns:
-            out[f"{col}_yoy"] = out[col].pct_change().replace([np.inf, -np.inf], np.nan)
+            out[f"{col}_yoy"] = out[col].pct_change().replace([np.inf, -np.inf], np.nan).clip(-1.0, 1.0)
             out[f"{col}_trend"] = out[col].diff()
             out[f"{col}_ma2"] = out[col].rolling(2, min_periods=1).mean()
+            out[f"{col}_median3"] = out[col].rolling(3, min_periods=1).median()
             out[f"{col}_vol3"] = out[col].rolling(3, min_periods=2).std()
+            med3 = out[col].rolling(3, min_periods=2).median()
+            mad3 = (out[col] - med3).abs().rolling(3, min_periods=2).median()
+            out[f"{col}_robust_z3"] = (out[col] - med3) / (mad3 + 1e-6)
+            out[f"{col}_robust_z3"] = out[f"{col}_robust_z3"].clip(-5.0, 5.0)
 
     if "monthly_pred_std" in out.columns and "monthly_pred_mean" in out.columns:
         out["scenario_vol_ratio"] = out["monthly_pred_std"] / (out["monthly_pred_mean"].abs() + 1e-6)
@@ -179,6 +202,18 @@ def enrich_yearly_features(yearly_df: pd.DataFrame) -> pd.DataFrame:
 
     if "year" in out.columns:
         out["year_index"] = out["year"] - int(out["year"].min())
+
+    clip_cols = [
+        "scenario_vol_ratio",
+        "monthly_pred_cv",
+        "monthly_pred_range",
+        "supply_demand_ratio",
+        "inventory_transport_ratio",
+        "policy_sentiment_gap",
+    ]
+    for c in clip_cols:
+        if c in out.columns:
+            out[c] = _clip_series(out[c], low_q=0.05, high_q=0.95)
 
     out = out.replace([np.inf, -np.inf], np.nan).ffill().bfill().fillna(0.0)
     return out

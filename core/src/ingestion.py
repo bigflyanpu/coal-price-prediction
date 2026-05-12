@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from .data_contract import DataContract, ValidationResult
+from .public_sources import PublicSourceCollector, PublicSourceConfig
 from .text_sources import TextSourceCollector
 
 
@@ -20,6 +22,8 @@ class IngestionConfig:
     curated_dir: str | Path = "data/curated"
     use_live_text_sources: bool = True
     text_source_config_path: str | Path = "config/text_sources.json"
+    public_source_config_path: str | Path = "config/public_data_sources.json"
+    strict_real_data: bool = True
 
 
 class MultiSourceIngestor:
@@ -30,6 +34,13 @@ class MultiSourceIngestor:
         self.source_dir = Path(cfg.source_dir)
         self.source_dir.mkdir(parents=True, exist_ok=True)
         self.text_collector = TextSourceCollector(cfg.text_source_config_path) if cfg.use_live_text_sources else None
+        self.public_collector = PublicSourceCollector(
+            PublicSourceConfig(
+                config_path=cfg.public_source_config_path,
+                start=cfg.start,
+                end=cfg.end,
+            )
+        )
 
     def _date_index(self) -> pd.DatetimeIndex:
         return pd.date_range(self.cfg.start, self.cfg.end, freq="D")
@@ -39,8 +50,19 @@ class MultiSourceIngestor:
         if path.exists():
             df = pd.read_csv(path)
         else:
+            if self.cfg.strict_real_data:
+                raise FileNotFoundError(f"严格模式下缺少本地数据源文件: {path}")
             df = generator()
         return df
+
+    def _load_local_source(self, name: str) -> pd.DataFrame:
+        path = self.source_dir / f"{name}.csv"
+        if not path.exists():
+            return pd.DataFrame()
+        try:
+            return pd.read_csv(path)
+        except Exception:
+            return pd.DataFrame()
 
     def _load_existing_source(self, name: str) -> pd.DataFrame:
         path = self.source_dir / f"{name}.csv"
@@ -84,7 +106,14 @@ class MultiSourceIngestor:
                 }
             )
 
-        df = self._load_or_generate("structured", _gen)
+        local = self._load_local_source("structured")
+        if not local.empty:
+            df = local
+        elif self.cfg.strict_real_data:
+            df = self.public_collector.collect_structured()
+            self._persist_source("structured", df)
+        else:
+            df = self._load_or_generate("structured", _gen)
         df["date"] = pd.to_datetime(df["date"])
         return df.sort_values("date").reset_index(drop=True)
 
@@ -126,7 +155,9 @@ class MultiSourceIngestor:
 
         if df.empty and not existing.empty:
             df = existing
-        if df.empty:
+        if df.empty and self.cfg.strict_real_data:
+            df = self.public_collector.collect_policy_text()
+        elif df.empty:
             df = _gen()
 
         self._persist_source("policy_text", df)
@@ -173,7 +204,9 @@ class MultiSourceIngestor:
 
         if df.empty and not existing.empty:
             df = existing
-        if df.empty:
+        if df.empty and self.cfg.strict_real_data:
+            df = self.public_collector.collect_sentiment_text()
+        elif df.empty:
             df = _gen()
 
         self._persist_source("sentiment_text", df)
@@ -201,9 +234,16 @@ class MultiSourceIngestor:
                     )
             return pd.DataFrame(rows)
 
-        df = self._load_or_generate("weather", _gen)
-        if df.empty:
-            df = _gen()
+        local = self._load_local_source("weather")
+        if not local.empty:
+            df = local
+        elif self.cfg.strict_real_data:
+            df = self.public_collector.collect_weather()
+            self._persist_source("weather", df)
+        else:
+            df = self._load_or_generate("weather", _gen)
+            if df.empty:
+                df = _gen()
         df["date"] = pd.to_datetime(df["date"])
         return df.sort_values(["date", "region"]).reset_index(drop=True)
 
@@ -217,6 +257,26 @@ class MultiSourceIngestor:
         out.mkdir(parents=True, exist_ok=True)
         df.to_csv(out / f"{name}.csv", index=False)
 
+    def _build_ingestion_audit(self, frames: dict[str, pd.DataFrame]) -> dict[str, object]:
+        detail: dict[str, object] = {}
+        for name, df in frames.items():
+            date_col = pd.to_datetime(df.get("date", pd.Series(dtype="datetime64[ns]")), errors="coerce")
+            date_col = date_col.dropna()
+            detail[name] = {
+                "rows": int(len(df)),
+                "columns": list(df.columns),
+                "coverage_start": None if date_col.empty else str(date_col.min().date()),
+                "coverage_end": None if date_col.empty else str(date_col.max().date()),
+                "day_coverage": int(date_col.dt.date.nunique()) if not date_col.empty else 0,
+            }
+        return {
+            "generated_at": pd.Timestamp.utcnow().isoformat(),
+            "strict_real_data": bool(self.cfg.strict_real_data),
+            "window_start": self.cfg.start,
+            "window_end": self.cfg.end,
+            "datasets": detail,
+        }
+
     def build_curated_daily(
         self,
         structured: pd.DataFrame,
@@ -227,7 +287,7 @@ class MultiSourceIngestor:
         daily = structured.merge(policy_daily, on="date", how="left")
         daily = daily.merge(sentiment_daily, on="date", how="left")
         daily = daily.merge(weather_daily, on="date", how="left")
-        daily = daily.sort_values("date").ffill().bfill()
+        daily = daily.sort_values("date").ffill().fillna(0.0)
         return daily.reset_index(drop=True)
 
     def run(self) -> tuple[pd.DataFrame, dict[str, ValidationResult]]:
@@ -269,4 +329,17 @@ class MultiSourceIngestor:
         report_path = Path("reports")
         report_path.mkdir(parents=True, exist_ok=True)
         self.contract.dump_quality_report(list(results.values()), report_path / "data_quality.csv")
+        audit_payload = self._build_ingestion_audit(
+            {
+                "structured": structured,
+                "policy_text": policy,
+                "sentiment_text": sentiment,
+                "weather": weather,
+                "curated_daily": curated,
+            }
+        )
+        (report_path / "public_ingestion_audit.json").write_text(
+            json.dumps(audit_payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
         return curated, results
